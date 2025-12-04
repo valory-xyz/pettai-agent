@@ -129,34 +129,34 @@ jobs:
           python-version: '3.10'
       - name: Add Python to PATH # exposes the interpreter to subsequent shell steps
         run: echo "${{ steps.setup-python.outputs.python-path }}" >> "$GITHUB_PATH"
-      # - name: Prepare Windows signing environment
-      #   if: runner.os == 'Windows'
-      #   shell: bash
-      #   run: |
-      #     echo Setup Certificate
-      #     echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12
-      #     echo "Set Variables!"
-      #     {
-      #       echo "SM_HOST=${{ secrets.SM_HOST }}"
-      #       echo "SM_API_KEY=${{ secrets.SM_API_KEY }}"
-      #       echo "SM_KEY_PAIR_ALIAS=${{ secrets.SM_KEY_PAIR_ALIAS }}"
-      #       echo "SM_CLIENT_CERT_FILE=D:\\Certificate_pkcs12.p12"
-      #       echo "SM_CLIENT_CERT_PASSWORD=${{ secrets.SM_CLIENT_CERT_PASSWORD }}"
-      #     } >> "$GITHUB_ENV"
-      #     echo "C:\\Program Files (x86)\\Windows Kits\\10\\App Certification Kit" >> "$GITHUB_PATH"
-      #     echo "C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools" >> "$GITHUB_PATH"
-      #     echo "C:\\Program Files\\DigiCert\\DigiCert One Signing Manager Tools" >> "$GITHUB_PATH"
-      # - name: Install DigiCert tooling on Windows # required for code-signing
-      #   if: runner.os == 'Windows'
-      #   shell: cmd
-      #   working-directory: ./olas-sdk-starter
-      #   run: |
-      #     curl -X GET  https://one.digicert.com/signingmanager/api-ui/v1/releases/smtools-windows-x64.msi/download -H "x-api-key:%SM_API_KEY%" -o smtools-windows-x64.msi
-      #     msiexec /i smtools-windows-x64.msi /quiet /qn
-      #     smksp_registrar.exe list
-      #     smctl.exe keypair ls
-      #     C:\Windows\System32\certutil.exe -csp "DigiCert Signing Manager KSP" -key -user
-      #     smksp_cert_sync.exe
+      - name: Prepare Windows signing environment
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          echo Setup Certificate
+          echo "${{ secrets.SM_CLIENT_CERT_FILE_B64 }}" | base64 --decode > /d/Certificate_pkcs12.p12
+          echo "Set Variables!"
+          {
+            echo "SM_HOST=${{ secrets.SM_HOST }}"
+            echo "SM_API_KEY=${{ secrets.SM_API_KEY }}"
+            echo "SM_KEY_PAIR_ALIAS=${{ secrets.SM_KEY_PAIR_ALIAS }}"
+            echo "SM_CLIENT_CERT_FILE=D:\\Certificate_pkcs12.p12"
+            echo "SM_CLIENT_CERT_PASSWORD=${{ secrets.SM_CLIENT_CERT_PASSWORD }}"
+          } >> "$GITHUB_ENV"
+          echo "C:\\Program Files (x86)\\Windows Kits\\10\\App Certification Kit" >> "$GITHUB_PATH"
+          echo "C:\\Program Files (x86)\\Microsoft SDKs\\Windows\\v10.0A\\bin\\NETFX 4.8 Tools" >> "$GITHUB_PATH"
+          echo "C:\\Program Files\\DigiCert\\DigiCert One Signing Manager Tools" >> "$GITHUB_PATH"
+      - name: Install DigiCert tooling on Windows # required for code-signing
+        if: runner.os == 'Windows'
+        shell: cmd
+        working-directory: ./olas-sdk-starter
+        run: |
+          curl -X GET  https://one.digicert.com/signingmanager/api-ui/v1/releases/smtools-windows-x64.msi/download -H "x-api-key:%SM_API_KEY%" -o smtools-windows-x64.msi
+          msiexec /i smtools-windows-x64.msi /quiet /qn
+          smksp_registrar.exe list
+          smctl.exe keypair ls
+          C:\Windows\System32\certutil.exe -csp "DigiCert Signing Manager KSP" -key -user
+          smksp_cert_sync.exe
       - name: Prepare agent workspace # install deps, init autonomy, and derive IDs
         run: |
           make install-deps
@@ -169,25 +169,25 @@ jobs:
           make agent.tar.gz
       - name: Build and sign macOS binary # runs PyInstaller and codesigns output
         if: runner.os != 'Windows'
-        # env:
-        #   CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-        #   CSC_LINK: ${{ secrets.CSC_LINK }}
-        #   APPLE_ID: ${{ secrets.APPLE_ID }}
-        #   APPLE_ID_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-        #   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        #   SIGN_ID: "Developer ID Application: Valory AG (${{ secrets.APPLE_TEAM_ID }})"
+        env:
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          SIGN_ID: "Developer ID Application: Valory AG (${{ secrets.APPLE_TEAM_ID }})"
         run: |
-          # echo "$CSC_LINK" | base64 --decode > certificate.p12
+          echo "$CSC_LINK" | base64 --decode > certificate.p12
 
-          # security create-keychain -p temp build.keychain
-          # security default-keychain -s build.keychain
-          # security unlock-keychain -p temp build.keychain
-          # security import certificate.p12 -k build.keychain -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
-          # security set-key-partition-list -S apple-tool:,apple: -s -k temp build.keychain
+          security create-keychain -p temp build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p temp build.keychain
+          security import certificate.p12 -k build.keychain -P "$CSC_KEY_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k temp build.keychain
 
           make build-agent-runner-mac
 
-          # codesign -dv --verbose=4 dist/agent_runner_bin
+          codesign -dv --verbose=4 dist/agent_runner_bin
       - name: Rename macOS binary to release naming convention
         if: runner.os != 'Windows'
         run: |
@@ -198,12 +198,12 @@ jobs:
       - name: Build Windows binary with PyInstaller
         if: runner.os == 'Windows'
         run: make build-agent-runner
-      # - name: Sign Windows binary via DigiCert CLI
-      #   if: runner.os == 'Windows'
-      #   shell: cmd
-      #   working-directory: ./olas-sdk-starter
-      #   run: |
-      #     "C:\Program Files\DigiCert\DigiCert One Signing Manager Tools\smctl.exe" sign --keypair-alias=${{ secrets.SM_KEY_PAIR_ALIAS }} --input "dist/agent_runner_bin.exe"
+      - name: Sign Windows binary via DigiCert CLI
+        if: runner.os == 'Windows'
+        shell: cmd
+        working-directory: ./olas-sdk-starter
+        run: |
+          "C:\Program Files\DigiCert\DigiCert One Signing Manager Tools\smctl.exe" sign --keypair-alias=${{ secrets.SM_KEY_PAIR_ALIAS }} --input "dist/agent_runner_bin.exe"
       - name: Rename Windows binary to release naming convention
         if: runner.os == 'Windows'
         run: |

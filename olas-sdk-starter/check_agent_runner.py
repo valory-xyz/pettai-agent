@@ -21,9 +21,11 @@ def main() -> None:
     """Run the configured command and ensure it prints the search string."""
     command, timeout, search = _read_config()
     print(f"Running validation command: {command}")
+    args = shlex.split(command, posix=(os.name != "nt"))
+    print(args)
     process = subprocess.Popen(  # noqa: S603,S607 (controlled input)
-        command,
-        shell=True,
+        args,
+        shell=False,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

@@ -1045,99 +1045,104 @@ class OlasInterface:
             )
 
     def _discover_staking_config(self) -> Optional[Dict[str, Any]]:
-        """Attempt to infer staking configuration from local Operate service files."""
-        candidate_roots: List[Path] = []
-        env_root = os.environ.get("OPERATE_HOME")
-        if env_root:
-            candidate_roots.append(Path(env_root).expanduser())
-        try:
-            candidate_roots.append(Path.cwd() / ".operate")
-        except Exception:
-            pass
-        candidate_roots.append(Path.home() / ".operate")
+        """Attempt to infer staking configuration from environment variables."""
 
-        inspected: List[Path] = []
-        for root in candidate_roots:
-            root = root.expanduser()
-            try:
-                resolved = root.resolve()
-            except Exception:
-                resolved = root
-            if resolved in inspected:
-                continue
-            inspected.append(resolved)
+        def _lookup_env(name: Optional[str]) -> Optional[str]:
+            if not name:
+                return None
+            candidates = [name]
+            if not name.startswith("CONNECTION_CONFIGS_CONFIG_"):
+                candidates.append(f"CONNECTION_CONFIGS_CONFIG_{name}")
+            for candidate in candidates:
+                value = os.environ.get(candidate)
+                if value and str(value).strip():
+                    return str(value).strip()
+            return None
 
-            services_dir = resolved / "services"
-            if not services_dir.exists():
-                continue
+        def _lookup(*names: Optional[str]) -> Optional[str]:
+            for name in names:
+                value = _lookup_env(name)
+                if value:
+                    return value
+            return None
 
-            for service_dir in sorted(services_dir.iterdir()):
-                if not service_dir.is_dir():
-                    continue
-                config_path = service_dir / "config.json"
-                if not config_path.exists():
-                    continue
-                try:
-                    with config_path.open("r", encoding="utf-8") as handle:
-                        service_cfg = json.load(handle)
-                except Exception:
-                    continue
-                chain_configs = service_cfg.get("chain_configs")
-                if not isinstance(chain_configs, dict):
-                    continue
-                for chain_name, chain_cfg in chain_configs.items():
-                    if not isinstance(chain_cfg, dict):
-                        continue
-                    chain_data = chain_cfg.get("chain_data", {}) or {}
-                    user_params = chain_data.get("user_params", {}) or {}
-                    if not user_params.get("use_staking", False):
-                        continue
-                    ledger_cfg = chain_cfg.get("ledger_config", {}) or {}
-                    rpc_candidate = str(ledger_cfg.get("rpc") or "").strip() or None
-                    service_id_value = self._parse_int_like(
-                        chain_data.get("token") or user_params.get("service_id")
-                    )
-                    if service_id_value is None:
-                        continue
-                    if service_id_value < 0:
-                        # Ignore placeholder service definitions that do not
-                        # represent real staking deployments.
-                        continue
-                    staking_program_id = user_params.get(
-                        "staking_program_id"
-                    ) or chain_data.get("staking_program_id")
-                    staking_contract_address = (
-                        user_params.get("staking_contract_address")
-                        or user_params.get("staking_proxy_address")
-                        or staking_program_id
-                        or chain_data.get("staking_contract_address")
-                    )
-                    staking_token_address = (
-                        user_params.get("staking_token_address")
-                        or user_params.get("staking_token_proxy_address")
-                        or chain_data.get("staking_token_address")
-                    )
-                    result = {
-                        "source": str(config_path),
-                        "chain_name": chain_name,
-                        "rpc_url": rpc_candidate,
-                        "service_id": service_id_value,
-                        "safe_address": chain_data.get("multisig")
-                        or user_params.get("multisig"),
-                        "staking_program_id": staking_program_id,
-                        "staking_contract_address": staking_contract_address,
-                        "staking_token_address": staking_token_address,
-                    }
-                    if not result["staking_contract_address"]:
-                        result["staking_contract_address"] = result[
-                            "staking_token_address"
-                        ]
-                    if not result["staking_token_address"]:
-                        result["staking_token_address"] = result[
-                            "staking_contract_address"
-                        ]
-                    return result
-        return None
+        chain_name = _lookup("STAKING_CHAIN_NAME", "SERVICE_CHAIN_NAME", "CHAIN_NAME")
+        rpc_url = _lookup(
+            "STAKING_RPC_URL",
+            "SERVICE_RPC_URL",
+            "CHECKPOINT_RPC_URL",
+            "STAKING_LEDGER_RPC",
+        )
+        raw_service_id = _lookup(
+            "SERVICE_ID",
+            "STAKING_SERVICE_ID",
+            "SERVICE_TOKEN_ID",
+            "SERVICE_TOKEN",
+        )
+        service_id_value = self._parse_int_like(raw_service_id)
+        if raw_service_id and service_id_value is None:
+            self.logger.warning(
+                "Staking SERVICE_ID value %s is not a valid integer", raw_service_id
+            )
+
+        staking_program_id = _lookup(
+            "STAKING_PROGRAM_ID", "SERVICE_STAKING_PROGRAM_ID"
+        )
+        staking_contract_address = _lookup(
+            "STAKING_CONTRACT_ADDRESS",
+            "STAKING_PROXY_ADDRESS",
+            "SERVICE_STAKING_CONTRACT_ADDRESS",
+            "SERVICE_STAKING_PROXY_ADDRESS",
+        )
+        staking_token_address = _lookup(
+            "STAKING_TOKEN_ADDRESS",
+            "STAKING_TOKEN_PROXY_ADDRESS",
+            "SERVICE_STAKING_TOKEN_ADDRESS",
+            "SERVICE_STAKING_TOKEN_PROXY_ADDRESS",
+        )
+        safe_address = self._resolve_safe_address()
+
+        missing_required: List[str] = []
+        if service_id_value is None or service_id_value < 0:
+            missing_required.append("SERVICE_ID")
+        has_staking_target = bool(
+            staking_contract_address or staking_program_id or staking_token_address
+        )
+        if not has_staking_target:
+            missing_required.append(
+                "STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)"
+            )
+
+        if missing_required:
+            self.logger.warning(
+                "Staking configuration not provided via environment variables. Missing: %s",
+                ", ".join(missing_required),
+            )
+            return None
+
+        if not staking_contract_address and staking_program_id:
+            staking_contract_address = staking_program_id
+        if not staking_token_address:
+            staking_token_address = staking_contract_address
+        elif not staking_contract_address:
+            staking_contract_address = staking_token_address
+
+        self.logger.info(
+            "Loaded staking configuration from environment (service_id=%s, chain=%s)",
+            service_id_value,
+            chain_name or "unknown",
+        )
+
+        return {
+            "source": "environment",
+            "chain_name": chain_name,
+            "rpc_url": rpc_url,
+            "service_id": service_id_value,
+            "safe_address": safe_address,
+            "staking_program_id": staking_program_id,
+            "staking_contract_address": staking_contract_address,
+            "staking_token_address": staking_token_address,
+        }
 
     @staticmethod
     def _parse_int_like(value: Any) -> Optional[int]:
@@ -1583,112 +1588,46 @@ class OlasInterface:
             return False
 
     async def _ensure_npm_dependencies(self, react_dir: Path) -> bool:
-        """Install npm/yarn dependencies if needed."""
-        try:
-            node_modules = react_dir / "node_modules"
-            package_json = react_dir / "package.json"
+        """Ensure React dependencies were installed at build time."""
+        node_modules = react_dir / "node_modules"
+        package_json = react_dir / "package.json"
 
-            if not package_json.exists():
-                self.logger.error(f"❌ No package.json found in {react_dir}")
-                return False
-
-            # Check if node_modules exists
-            if node_modules.exists():
-                self.logger.info("✅ node_modules already exists, skipping install")
-                return True
-
-            self.logger.info("📦 Installing npm dependencies...")
-
-            # Check for yarn.lock or package-lock.json to determine package manager
-            use_yarn = (react_dir / "yarn.lock").exists()
-
-            # Determine which package manager to use
-            install_cmd = None
-            if use_yarn and self._command_exists("yarn"):
-                install_cmd = ["yarn", "install"]
-                self.logger.info("Using yarn for installation")
-            elif self._command_exists("npm"):
-                install_cmd = ["npm", "install"]
-                self.logger.info("Using npm for installation")
-            else:
-                self.logger.error("❌ Neither yarn nor npm found in PATH")
-                return False
-
-            # Run installation
-            process = await asyncio.create_subprocess_exec(
-                *install_cmd,
-                cwd=str(react_dir),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            stdout, stderr = await process.communicate()
-
-            if process.returncode == 0:
-                self.logger.info("✅ Dependencies installed successfully")
-                return True
-            else:
-                self.logger.error(
-                    f"❌ Dependency installation failed: {stderr.decode()}"
-                )
-                return False
-
-        except Exception as e:
-            self.logger.error(f"❌ Error installing dependencies: {e}")
+        if not package_json.exists():
+            self.logger.error(f"❌ No package.json found in {react_dir}")
             return False
 
+        if node_modules.exists():
+            self.logger.info("✅ Found node_modules installed ahead of time")
+            return True
+
+        self.logger.error(
+            "❌ React dependencies missing. Install and build the frontend during your "
+            "Docker image or binary build process before running the agent."
+        )
+        return False
+
     async def build_react_app(self, react_dir: Path) -> bool:
-        """Build React app to static files."""
+        """Use the pre-built React app that was produced during image/binary build."""
         try:
             if not react_dir.exists():
                 self.logger.warning(f"⚠️ React directory not found: {react_dir}")
                 return False
 
-            package_json = react_dir / "package.json"
-            if not package_json.exists():
-                self.logger.error(f"❌ No package.json found in {react_dir}")
-                return False
-
             build_dir = react_dir / "build"
+            build_index = build_dir / "index.html"
 
-            # Check if build already exists and is recent
-            if build_dir.exists() and (build_dir / "index.html").exists():
-                self.logger.info("✅ React build already exists, skipping build")
+            if build_index.exists():
+                self.logger.info("✅ Found pre-built React assets")
                 return True
 
-            # Ensure dependencies are installed
-            if not await self._ensure_npm_dependencies(react_dir):
-                return False
-
-            self.logger.info("📦 Building React app...")
-
-            # Check for yarn.lock or package-lock.json to determine package manager
-            use_yarn = (react_dir / "yarn.lock").exists()
-            build_cmd = (
-                ["yarn", "build"]
-                if use_yarn and self._command_exists("yarn")
-                else ["npm", "run", "build"]
+            self.logger.error(
+                "❌ React build not found. Build the frontend (npm run build / yarn build) "
+                "as part of your Docker image or binary build before running the agent."
             )
-
-            # Run build command
-            process = await asyncio.create_subprocess_exec(
-                *build_cmd,
-                cwd=str(react_dir),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
-            stdout, stderr = await process.communicate()
-
-            if process.returncode == 0:
-                self.logger.info("✅ React app built successfully")
-                return True
-            else:
-                self.logger.error(f"❌ React build failed: {stderr.decode()}")
-                return False
+            return False
 
         except Exception as e:
-            self.logger.error(f"❌ Error building React app: {e}")
+            self.logger.error(f"❌ Error locating React build: {e}")
             return False
 
     async def start_web_server(
@@ -1702,14 +1641,16 @@ class OlasInterface:
             if enable_react:
                 react_dir = Path(__file__).parent.parent / "frontend"
                 if react_dir.exists():
-                    self.logger.info("🎨 Building React frontend...")
+                    self.logger.info("🎨 Loading pre-built React frontend...")
                     react_built = await self.build_react_app(react_dir)
                     if react_built:
                         self.react_build_dir = react_dir / "build"
                         self.react_enabled = True
                         self.logger.info("✅ React build available for serving")
                     else:
-                        self.logger.warning("⚠️ React build failed")
+                        self.logger.warning(
+                            "⚠️ React build missing. Ensure the frontend is built prior to runtime."
+                        )
                 else:
                     self.logger.info(f"ℹ️ No React frontend found at {react_dir}")
 

@@ -817,6 +817,19 @@ class OlasInterface:
             return False
         return True
 
+    @property
+    def health_reason(self) -> str:
+        """Return a human-readable reason for the current health status."""
+        if self.health_status in {"error", "stopped"}:
+            return f"Agent status is '{self.health_status}'"
+        if not self.websocket_connected:
+            return (
+                "WebSocket not connected (agent not authenticated or still connecting)"
+            )
+        if self.is_transitioning and self.get_seconds_since_last_transition() > 60:
+            return f"Agent stuck transitioning for {self.get_seconds_since_last_transition():.0f}s"
+        return "Agent is healthy"
+
     def _resolve_rpc_url(self) -> Optional[str]:
         """Attempt to resolve the RPC URL for action recording."""
 
@@ -1085,9 +1098,7 @@ class OlasInterface:
                 "Staking SERVICE_ID value %s is not a valid integer", raw_service_id
             )
 
-        staking_program_id = _lookup(
-            "STAKING_PROGRAM_ID", "SERVICE_STAKING_PROGRAM_ID"
-        )
+        staking_program_id = _lookup("STAKING_PROGRAM_ID", "SERVICE_STAKING_PROGRAM_ID")
         staking_contract_address = _lookup(
             "STAKING_CONTRACT_ADDRESS",
             "STAKING_PROXY_ADDRESS",
@@ -1238,6 +1249,7 @@ class OlasInterface:
         health_data: Dict[str, Any] = {
             # New required schema (Pearl-compatible)
             "is_healthy": self.is_healthy,
+            "health_reason": self.health_reason,
             "seconds_since_last_transition": seconds_since_transition,
             "is_tm_healthy": True,  # Not applicable for Olas SDK agents; report healthy
             "period": 0,
@@ -1607,7 +1619,7 @@ class OlasInterface:
         return False
 
     async def build_react_app(self, react_dir: Path) -> bool:
-        """Use the pre-built React app that was produced during image/binary build."""
+        """Build/detect React app. Attempts to build if no pre-built assets exist."""
         try:
             if not react_dir.exists():
                 self.logger.warning(f"⚠️ React directory not found: {react_dir}")
@@ -1617,17 +1629,92 @@ class OlasInterface:
             build_index = build_dir / "index.html"
 
             if build_index.exists():
-                self.logger.info("✅ Found pre-built React assets")
+                self.logger.info(f"✅ Found pre-built React assets at {build_dir}")
                 return True
 
-            self.logger.error(
-                "❌ React build not found. Build the frontend (npm run build / yarn build) "
-                "as part of your Docker image or binary build before running the agent."
+            # No pre-built assets found - try to build React from Python
+            self.logger.info(
+                "🔨 React build not found, attempting to build from Python..."
             )
-            return False
+            return await self._build_react_from_python(react_dir)
 
         except Exception as e:
             self.logger.error(f"❌ Error locating React build: {e}")
+            return False
+
+    async def _build_react_from_python(self, react_dir: Path) -> bool:
+        """Build React app using yarn or npm from Python."""
+        import subprocess
+
+        package_json = react_dir / "package.json"
+        if not package_json.exists():
+            self.logger.error(f"❌ No package.json found in {react_dir}")
+            return False
+
+        node_modules = react_dir / "node_modules"
+
+        # Determine package manager
+        use_yarn = (react_dir / "yarn.lock").exists()
+        pkg_manager = "yarn" if use_yarn else "npm"
+
+        if not self._command_exists(pkg_manager):
+            self.logger.error(
+                f"❌ {pkg_manager} not found in PATH. Cannot build React."
+            )
+            return False
+
+        try:
+            # Install dependencies if needed
+            if not node_modules.exists():
+                self.logger.info(
+                    f"📦 Installing React dependencies with {pkg_manager}..."
+                )
+                install_cmd = [pkg_manager, "install"]
+                if use_yarn:
+                    install_cmd.append("--frozen-lockfile")
+                result = subprocess.run(
+                    install_cmd,
+                    cwd=str(react_dir),
+                    capture_output=True,
+                    text=True,
+                    timeout=300,  # 5 minute timeout
+                )
+                if result.returncode != 0:
+                    self.logger.error(
+                        f"❌ Failed to install dependencies: {result.stderr}"
+                    )
+                    return False
+                self.logger.info("✅ Dependencies installed successfully")
+
+            # Build React app
+            self.logger.info(f"🏗️ Building React app with {pkg_manager}...")
+            build_cmd = [pkg_manager, "run", "build"]
+            result = subprocess.run(
+                build_cmd,
+                cwd=str(react_dir),
+                capture_output=True,
+                text=True,
+                timeout=300,  # 5 minute timeout
+            )
+
+            if result.returncode != 0:
+                self.logger.error(f"❌ React build failed: {result.stderr}")
+                return False
+
+            # Verify build output
+            build_index = react_dir / "build" / "index.html"
+            if build_index.exists():
+                self.logger.info("✅ React app built successfully")
+                return True
+            else:
+                self.logger.error("❌ React build completed but index.html not found")
+                return False
+
+        except subprocess.TimeoutExpired:
+            self.logger.error("❌ React build timed out")
+            return False
+        except Exception as e:
+            self.logger.error(f"❌ React build failed: {e}")
             return False
 
     async def start_web_server(
@@ -1640,16 +1727,21 @@ class OlasInterface:
             # Try to build and serve React static files if enabled
             if enable_react:
                 react_dir = Path(__file__).parent.parent / "frontend"
+                react_dir = react_dir.resolve()  # Resolve to absolute path
+                self.logger.debug(f"🔍 Looking for React frontend at: {react_dir}")
                 if react_dir.exists():
-                    self.logger.info("🎨 Loading pre-built React frontend...")
+                    self.logger.info(f"🎨 Loading React frontend from {react_dir}...")
                     react_built = await self.build_react_app(react_dir)
                     if react_built:
                         self.react_build_dir = react_dir / "build"
                         self.react_enabled = True
-                        self.logger.info("✅ React build available for serving")
+                        self.logger.info(
+                            f"✅ React UI enabled, serving from {self.react_build_dir}"
+                        )
                     else:
                         self.logger.warning(
-                            "⚠️ React build missing. Ensure the frontend is built prior to runtime."
+                            f"⚠️ React build missing at {react_dir / 'build'}. "
+                            "Will attempt to build or fallback to healthcheck on root."
                         )
                 else:
                     self.logger.info(f"ℹ️ No React frontend found at {react_dir}")

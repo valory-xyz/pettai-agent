@@ -8,6 +8,7 @@ import asyncio
 import logging
 import random
 import time
+import re
 from pathlib import Path
 from typing import (
     Optional,
@@ -94,6 +95,7 @@ class PettAgent:
         self.telegram_token = (
             self.olas.get_env_var("TELEGRAM_BOT_TOKEN") or ""
         ).strip()
+        self._telegram_token_valid = self._is_valid_telegram_token(self.telegram_token)
         self.privy_token = (self.olas.get_env_var("PRIVY_TOKEN") or "").strip()
         self.websocket_url = self.olas.get_env_var("WEBSOCKET_URL", "wss://ws.pett.ai")
 
@@ -182,6 +184,13 @@ class PettAgent:
         quantity: int
         type: str
         name: str
+
+    @staticmethod
+    def _is_valid_telegram_token(token: str) -> bool:
+        """Return True if the token matches the expected bot token format."""
+        if not token:
+            return False
+        return bool(re.fullmatch(r"\d+:[A-Za-z0-9_-]+", token))
 
     async def initialize(self) -> bool:
         """Initialize all agent components."""
@@ -435,7 +444,7 @@ class PettAgent:
                 self.waiting_for_react_login = True
 
             # Initialize Telegram bot if token is available
-            if self.telegram_token:
+            if self.telegram_token and self._telegram_token_valid:
                 self.logger.info("🤖 Initializing Telegram bot...")
                 try:
                     # Share WebSocket client and decision engine to avoid duplicates
@@ -451,7 +460,14 @@ class PettAgent:
                 except Exception as e:
                     self.logger.error(f"❌ Failed to initialize Telegram bot: {e}")
             else:
-                self.logger.info("ℹ️ No TELEGRAM_BOT_TOKEN found - Telegram disabled")
+                if self.telegram_token and not self._telegram_token_valid:
+                    self.logger.info(
+                        "ℹ️ Telegram integration is optional and not required to run Pett Agent. A valid TELEGRAM_BOT_TOKEN was not provided, so Telegram features will stay disabled until a valid token is configured."
+                    )
+                else:
+                    self.logger.info(
+                        "ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running."
+                    )
 
             self.olas.update_health_status("running", is_transitioning=False)
             self.logger.info("✅ Pett Agent initialization complete")
@@ -469,7 +485,9 @@ class PettAgent:
                 self.logger.info("🤖 Starting Telegram bot...")
                 await self.telegram_bot.run()
         except Exception as e:
-            self.logger.error(f"❌ Error in Telegram bot: {e}")
+            self.logger.error(
+                f"❌ Error in Telegram bot (optional component, Pett Agent keeps running without Telegram): {e}"
+            )
 
     async def _check_withdrawal_mode(self):
         """Check and handle withdrawal mode."""
@@ -2586,6 +2604,9 @@ class PettAgent:
 
         self.running = True
         self.logger.info("🎯 Pett Agent is now running...")
+        self.logger.info(
+            "Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent"
+        )
 
         try:
             await self._maybe_call_staking_checkpoint()

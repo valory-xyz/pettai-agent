@@ -1,0 +1,78 @@
+2025-12-05 14:09:48,208 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-05 14:09:48,208 root ERROR: Failed to decrypt ethereum private key from ethereum_private_key.txt: Extra data: line 1 column 2 (char 1)
+2025-12-05 14:09:48,208 root WARNING: ethereum_private_key not found (checked ./ethereum_private_key.txt, ../agent_key/ethereum_private_key.txt, and ETH_PRIVATE_KEY env)
+2025-12-05 14:09:48,208 pett_agent INFO: Ethereum private key: Not found
+2025-12-05 14:09:48,208 pett_agent INFO: Withdrawal mode: False
+2025-12-05 14:09:48,208 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-05 14:09:48,218 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-05 14:09:48,218 pett_agent INFO: Skipping action recorder initialisation: ethereum private key not available
+2025-12-05 14:09:48,218 pett_agent INFO: Skipping staking checkpoint initialisation: ethereum private key not available
+2025-12-05 14:09:48,218 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-05 14:09:48,218 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-05 14:09:48,219 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-05 14:09:48,220 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-05 14:09:48,220 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-05 14:09:48,220 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-05 14:09:48,220 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-05 14:09:48,220 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-05 14:09:48,220 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-05 14:09:48,220 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-05 14:09:48,220 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-05 14:09:48,220 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-05 14:09:48,220 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-05 14:09:48,220 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-05 14:09:48,220 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-05 14:09:48,221 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-05 14:09:51,407 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-05 14:09:51,407 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-05 14:09:51,407 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-05 14:09:51,407 pett_agent INFO: 🛑 Web server stopped
+2025-12-05 14:09:51,408 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-05 14:10:41,217 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-05 14:10:41,217 root ERROR: Failed to decrypt ethereum private key from ethereum_private_key.txt: Extra data: line 1 column 2 (char 1)
+2025-12-05 14:10:41,217 root WARNING: ethereum_private_key not found (checked ./ethereum_private_key.txt, ../agent_key/ethereum_private_key.txt, and ETH_PRIVATE_KEY env)
+2025-12-05 14:10:41,217 pett_agent INFO: Ethereum private key: Not found
+2025-12-05 14:10:41,217 pett_agent INFO: Withdrawal mode: False
+2025-12-05 14:10:41,217 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-05 14:10:41,222 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-05 14:10:41,222 pett_agent INFO: Skipping action recorder initialisation: ethereum private key not available
+2025-12-05 14:10:41,222 pett_agent INFO: Skipping staking checkpoint initialisation: ethereum private key not available
+2025-12-05 14:10:41,222 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-05 14:10:41,222 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-05 14:10:41,222 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-05 14:10:41,223 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-05 14:10:41,223 pett_agent INFO: 🔨 React build not found, attempting to build from Python...
+2025-12-05 14:10:41,231 pett_agent INFO: 📦 Installing React dependencies with yarn...
+2025-12-05 14:10:59,794 pett_agent INFO: ✅ Dependencies installed successfully
+2025-12-05 14:10:59,795 pett_agent INFO: 🏗️ Building React app with yarn...
+2025-12-05 14:11:40,544 pett_agent INFO: ✅ React app built successfully
+2025-12-05 14:11:40,547 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-05 14:11:40,554 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-05 14:11:40,554 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-05 14:11:40,554 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-05 14:11:40,554 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-05 14:11:40,554 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-05 14:11:40,555 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-05 14:11:40,555 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-05 14:11:40,555 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-05 14:11:40,555 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-05 14:11:40,555 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-05 14:11:46,879 pett_agent INFO: 🔐 Received login request from React frontend
+2025-12-05 14:11:46,880 pett_agent INFO: 🔐 Updating Privy token and refreshing WebSocket connection
+2025-12-05 14:11:46,880 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-05 14:11:46,880 agent.pett_websocket_client INFO: 🆕 Using environment auth token for connection
+2025-12-05 14:11:46,881 agent.pett_websocket_client INFO: 🔄 Connection attempt 1/3
+2025-12-05 14:11:46,881 agent.pett_websocket_client INFO: 🔌 Connecting to WebSocket: wss://ws.pett.ai
+2025-12-05 14:11:54,969 agent.pett_websocket_client INFO: ✅ WebSocket connection established
+2025-12-05 14:11:54,969 agent.pett_websocket_client INFO: ✅ WebSocket connected, starting message listener...
+2025-12-05 14:11:54,969 agent.pett_websocket_client INFO: 👂 Started WebSocket message listener
+2025-12-05 14:11:54,970 agent.pett_websocket_client INFO: 🔐 Attempting authentication...
+2025-12-05 14:11:54,970 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-05 14:11:54,970 agent.pett_websocket_client INFO: 👂 Starting WebSocket message listener...
+2025-12-05 14:11:56,111 agent.pett_websocket_client INFO: ✅ Connection and authentication successful!
+2025-12-05 14:11:56,788 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-05 14:12:00,456 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-05 14:12:00,502 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-05 14:12:00,502 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-05 14:12:00,503 pett_agent INFO: 🛑 Web server stopped
+2025-12-05 14:12:00,503 pett_agent INFO: ✅ Pett Agent shutdown complete

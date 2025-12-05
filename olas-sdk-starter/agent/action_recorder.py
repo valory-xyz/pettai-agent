@@ -15,7 +15,7 @@ from dataclasses import dataclass
 import os
 import json
 import re
-from typing import Dict, Optional, Set, Any, cast
+from typing import Dict, Optional, Set, Any, Tuple, cast
 
 from eth_account.signers.local import LocalAccount
 from hexbytes import HexBytes
@@ -25,6 +25,7 @@ from web3.exceptions import ContractLogicError
 from web3.middleware import ExtraDataToPOAMiddleware
 from web3.types import TxParams
 
+from .gas_limits import MAX_TRANSACTION_GAS
 from .nonce_utils import get_shared_nonce_lock
 
 # Contract address provided by the user.
@@ -132,12 +133,28 @@ ZERO_ADDRESS = "0x" + "0" * 40
 # safeTxGas is the gas reserved for the inner transaction execution
 DEFAULT_SAFE_TX_GAS = 60_000
 DEFAULT_BASE_GAS = 10_000
+MIN_SAFE_TX_GAS_OVERRIDE = 30_000
+MAX_SAFE_TX_GAS_OVERRIDE = 5_000_000
+MIN_BASE_GAS_OVERRIDE = 1_000
+MAX_BASE_GAS_OVERRIDE = 500_000
 SAFE_EXECUTION_HEADROOM = 10_000
+SAFE_GAS_ESTIMATE_BUFFER_MULTIPLIER = 1.5
+SAFE_GAS_ESTIMATE_MIN_HEADROOM = 60_000
+SAFE_INTRINSIC_DYNAMIC_MARGIN = 120_000
+SAFE_MIN_FALLBACK_GAS = 450_000
+SAFE_FALLBACK_ADDITIONAL_BUFFER = 200_000
 TX_BASE_INTRINSIC_GAS = 21_000
 CALLDATA_ZERO_BYTE_COST = 4
 CALLDATA_NONZERO_BYTE_COST = 16
 SAFE_INTRINSIC_GAS_BUFFER = 10_000
 SAFE_INTRINSIC_FALLBACK_GAS = 70_000
+SAFE_OWNER_REFRESH_INTERVAL_SECONDS = 300
+
+# Delay between nonce retries to give pending transactions time to propagate.
+NONCE_RETRY_DELAY_SECONDS = 0.75
+# Safe nonce fetch retry configuration to avoid stale fallback usage.
+SAFE_NONCE_MAX_ATTEMPTS = 3
+SAFE_NONCE_FETCH_RETRY_DELAY_SECONDS = 0.5
 
 # EIP-1559 fee defaults (values expressed in wei)
 DEFAULT_PRIORITY_FEE_PER_GAS = Web3.to_wei(5, "mwei")  # 0.005 gwei
@@ -205,6 +222,9 @@ class ActionRecorder:
         self._safe_nonce_cache: Dict[str, int] = {}
         self._unknown_actions: Set[str] = set()
         self._enabled: bool = False
+        self._safe_owner_snapshot: Optional[Set[str]] = None
+        self._safe_owner_threshold: Optional[int] = None
+        self._last_safe_owner_check: float = 0.0
 
         self._initialise()
 
@@ -375,42 +395,19 @@ class ActionRecorder:
         # Optional: sanity-check Safe ownership/threshold
         try:
             if safe_contract is not None:
-                owners = []
-                threshold = None
-                try:
-                    owners = list(safe_contract.functions.getOwners().call())
-                except Exception:
-                    pass
-                try:
-                    threshold = int(safe_contract.functions.getThreshold().call())
-                except Exception:
-                    pass
-                # Extra diagnostics: owners/threshold snapshot
-                try:
-                    owners_preview = (
-                        [Web3.to_checksum_address(o) for o in owners] if owners else []
-                    )
-                    self._logger.info(
-                        f"Safe owners (n={len(owners_preview)}): {owners_preview}"
-                    )
-                    self._logger.info(
-                        f"Safe threshold: {threshold if threshold is not None else 'unknown'}"
-                    )
-                except Exception:
-                    pass
-                if owners:
-                    is_owner = account.address in {
-                        Web3.to_checksum_address(o) for o in owners
-                    }
-                    if not is_owner:
-                        self._logger.error(
-                            "Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)"
-                        )
-                if threshold and threshold > 1:
+                owners_valid = self._refresh_safe_owner_status(
+                    safe_contract=safe_contract,
+                    account=account,
+                    force=True,
+                    context="initialisation",
+                    log_snapshot=True,
+                )
+                if not owners_valid:
                     self._logger.error(
-                        "Safe threshold is %s but only one signature is provided; transaction will revert",
-                        threshold,
+                        "Safe ownership/threshold validation failed during initialisation; "
+                        "ActionRecorder disabled"
                     )
+                    return
         except Exception as exc:
             self._logger.error(
                 f"Failed to sanity-check Safe ownership/threshold: {exc}"
@@ -567,6 +564,14 @@ class ActionRecorder:
                 "Multisig not configured; cannot submit verified action"
             )
             return
+        if not self._refresh_safe_owner_status(
+            force=True,
+            context=f"recordAction:{action_key}",
+        ):
+            self._logger.error(
+                "Safe owner verification failed; aborting execTransaction"
+            )
+            return
 
         max_attempts = 50
         for attempt in range(max_attempts):
@@ -574,78 +579,98 @@ class ActionRecorder:
                 with self._nonce_lock:
                     nonce = self._resolve_nonce()
 
-                    # Validate inner recordAction signature signer against ActionRepo.mainSigner (if hash provided)
+                    # Validate inner recordAction signature signer against ActionRepo.mainSigner
+                    derived_inner_hash = self._compute_record_action_hash(
+                        action_id, nonce_hex, timestamp
+                    )
+                    if derived_inner_hash is None:
+                        self._logger.error(
+                            "Unable to derive recordAction hash; aborting execTransaction"
+                        )
+                        return
+
+                    hash_to_verify = derived_inner_hash
                     if inner_hash_hex:
                         try:
-                            msg_hash = HexBytes(inner_hash_hex)
-                            # Expect 32-byte hash
-                            if len(msg_hash) == 32:
-                                try:
-                                    from eth_keys.datatypes import (
-                                        Signature as EthSignature,
-                                    )
-                                except Exception as _exc_import:
-                                    self._logger.debug(
-                                        f"eth_keys not available to recover inner signer: {_exc_import}"
-                                    )
-                                    raise
-                                r_int = (
-                                    int(str(r), 16)
-                                    if str(r).startswith("0x")
-                                    else int(r)
-                                )
-                                s_int = (
-                                    int(str(s), 16)
-                                    if str(s).startswith("0x")
-                                    else int(s)
-                                )
-                                v_raw = int(v)
-                                # Normalize v to {0,1} for eth_keys: handle 27/28 and EIP-155 variants
-                                if v_raw in (0, 1):
-                                    v_norm = v_raw
-                                elif v_raw in (27, 28):
-                                    v_norm = v_raw - 27
-                                else:
-                                    v_norm = (v_raw - 27) & 1
-                                sig_obj = EthSignature(vrs=(v_norm, r_int, s_int))
-                                recovered_inner = (
-                                    sig_obj.recover_public_key_from_msg_hash(
-                                        msg_hash
-                                    ).to_checksum_address()
-                                )
-                                try:
-                                    expected_main_signer = Web3.to_checksum_address(
-                                        contract.functions.mainSigner().call()
-                                    )
-                                except Exception:
-                                    expected_main_signer = None
-                                recovered_inner_cs = Web3.to_checksum_address(
-                                    recovered_inner
-                                )
-                                matches_main_signer = (
-                                    expected_main_signer is not None
-                                    and recovered_inner_cs == expected_main_signer
-                                )
-                                self._logger.info(
-                                    f"Inner recordAction signer: {recovered_inner_cs}; "
-                                    f"equals_mainSigner={matches_main_signer}; "
-                                    f"expected={expected_main_signer}"
-                                )
-                                if not matches_main_signer:
-                                    self._logger.error(
-                                        "Inner recordAction signer does not match ActionRepo.mainSigner"
-                                    )
-                                    self._logger.error("Aborting execTransaction")
-                                    return
-                            else:
-                                self._logger.debug(
-                                    "Inner verification hash length != 32 bytes; "
-                                    "skipping signer check"
-                                )
+                            provided_hash = HexBytes(inner_hash_hex)
                         except Exception as exc:
-                            self._logger.debug(
-                                f"Failed to recover inner recordAction signer: {exc}"
+                            self._logger.error(
+                                "Invalid supplied recordAction hash '%s': %s; aborting execTransaction",
+                                inner_hash_hex,
+                                exc,
                             )
+                            return
+                        if len(provided_hash) != 32:
+                            self._logger.error(
+                                "Inner verification hash length != 32 bytes; aborting execTransaction"
+                            )
+                            return
+                        if provided_hash != derived_inner_hash:
+                            self._logger.error(
+                                "Provided recordAction hash %s does not match derived hash %s; aborting execTransaction",
+                                provided_hash.hex(),
+                                derived_inner_hash.hex(),
+                            )
+                            return
+                        hash_to_verify = provided_hash
+
+                    try:
+                        from eth_keys.datatypes import Signature as EthSignature
+                    except Exception as exc:
+                        self._logger.error(
+                            "eth_keys not available to recover inner signer: %s",
+                            exc,
+                        )
+                        return
+
+                    try:
+                        r_int = (
+                            int(str(r), 16) if str(r).startswith("0x") else int(r)
+                        )
+                        s_int = (
+                            int(str(s), 16) if str(s).startswith("0x") else int(s)
+                        )
+                        v_raw = int(v)
+                        # Normalize v to {0,1} for eth_keys: handle 27/28 and EIP-155 variants
+                        if v_raw in (0, 1):
+                            v_norm = v_raw
+                        elif v_raw in (27, 28):
+                            v_norm = v_raw - 27
+                        else:
+                            v_norm = (v_raw - 27) & 1
+                        sig_obj = EthSignature(vrs=(v_norm, r_int, s_int))
+                        recovered_inner = sig_obj.recover_public_key_from_msg_hash(
+                            hash_to_verify
+                        ).to_checksum_address()
+                    except Exception as exc:
+                        self._logger.error(
+                            f"Failed to recover inner recordAction signer: {exc}"
+                        )
+                        return
+
+                    try:
+                        expected_main_signer = Web3.to_checksum_address(
+                            contract.functions.mainSigner().call()
+                        )
+                    except Exception as exc:
+                        self._logger.error(
+                            f"Failed to load ActionRepo.mainSigner for verification: {exc}"
+                        )
+                        return
+
+                    recovered_inner_cs = Web3.to_checksum_address(recovered_inner)
+                    matches_main_signer = recovered_inner_cs == expected_main_signer
+                    self._logger.info(
+                        f"Inner recordAction signer: {recovered_inner_cs}; "
+                        f"equals_mainSigner={matches_main_signer}; "
+                        f"expected={expected_main_signer}"
+                    )
+                    if not matches_main_signer:
+                        self._logger.error(
+                            "Inner recordAction signer does not match ActionRepo.mainSigner"
+                        )
+                        self._logger.error("Aborting execTransaction")
+                        return
 
                     # Build inner calldata for ActionRepo.recordAction (prefer direct encode)
                     try:
@@ -690,7 +715,9 @@ class ActionRecorder:
 
                     estimated_safe_tx_gas = self._estimate_safe_tx_gas(fn, safe_address)
                     if estimated_safe_tx_gas is not None:
-                        safe_tx_gas = estimated_safe_tx_gas
+                        safe_tx_gas = self._cap_transaction_gas(
+                            estimated_safe_tx_gas, "Estimated safeTxGas"
+                        )
                         try:
                             self._logger.info(
                                 f"Estimated safeTxGas from recordAction: {safe_tx_gas}"
@@ -708,24 +735,88 @@ class ActionRecorder:
                     safe_tx_gas_override = os.environ.get("ACTION_SAFE_TX_GAS")
                     if safe_tx_gas_override:
                         try:
-                            safe_tx_gas = max(0, int(safe_tx_gas_override))
+                            override_value = int(safe_tx_gas_override)
+                            if override_value < MIN_SAFE_TX_GAS_OVERRIDE:
+                                self._logger.warning(
+                                    "ACTION_SAFE_TX_GAS override %s below minimum %s; raising to minimum",
+                                    safe_tx_gas_override,
+                                    MIN_SAFE_TX_GAS_OVERRIDE,
+                                )
+                                override_value = MIN_SAFE_TX_GAS_OVERRIDE
+                            elif override_value > MAX_SAFE_TX_GAS_OVERRIDE:
+                                self._logger.warning(
+                                    "ACTION_SAFE_TX_GAS override %s above maximum %s; capping to maximum",
+                                    safe_tx_gas_override,
+                                    MAX_SAFE_TX_GAS_OVERRIDE,
+                                )
+                                override_value = MAX_SAFE_TX_GAS_OVERRIDE
+                            if override_value > MAX_TRANSACTION_GAS:
+                                self._logger.warning(
+                                    "ACTION_SAFE_TX_GAS override %s exceeds Fusaka per-transaction limit %s; capping to limit",
+                                    safe_tx_gas_override,
+                                    MAX_TRANSACTION_GAS,
+                                )
+                                override_value = MAX_TRANSACTION_GAS
+                            safe_tx_gas = override_value
+                            self._logger.warning(
+                                "Using ACTION_SAFE_TX_GAS override; applied safeTxGas=%s",
+                                safe_tx_gas,
+                            )
                         except ValueError:
                             self._logger.warning(
-                                "Invalid ACTION_SAFE_TX_GAS override '%s'; using default %s",
+                                "Invalid ACTION_SAFE_TX_GAS override '%s'; keeping computed safeTxGas %s",
                                 safe_tx_gas_override,
-                                DEFAULT_SAFE_TX_GAS,
+                                safe_tx_gas,
                             )
+                    if (
+                        estimated_safe_tx_gas is not None
+                        and safe_tx_gas < estimated_safe_tx_gas
+                    ):
+                        self._logger.warning(
+                            "Configured safeTxGas %s is below estimated inner execution requirement %s; bumping to estimate",
+                            safe_tx_gas,
+                            estimated_safe_tx_gas,
+                        )
+                        safe_tx_gas = self._cap_transaction_gas(
+                            estimated_safe_tx_gas, "Estimated safeTxGas requirement"
+                        )
 
                     base_gas = DEFAULT_BASE_GAS
                     base_gas_override = os.environ.get("ACTION_SAFE_BASE_GAS")
                     if base_gas_override:
                         try:
-                            base_gas = max(0, int(base_gas_override))
+                            override_value = int(base_gas_override)
+                            if override_value < MIN_BASE_GAS_OVERRIDE:
+                                self._logger.warning(
+                                    "ACTION_SAFE_BASE_GAS override %s below minimum %s; raising to minimum",
+                                    base_gas_override,
+                                    MIN_BASE_GAS_OVERRIDE,
+                                )
+                                override_value = MIN_BASE_GAS_OVERRIDE
+                            elif override_value > MAX_BASE_GAS_OVERRIDE:
+                                self._logger.warning(
+                                    "ACTION_SAFE_BASE_GAS override %s above maximum %s; capping to maximum",
+                                    base_gas_override,
+                                    MAX_BASE_GAS_OVERRIDE,
+                                )
+                                override_value = MAX_BASE_GAS_OVERRIDE
+                            if override_value > MAX_TRANSACTION_GAS:
+                                self._logger.warning(
+                                    "ACTION_SAFE_BASE_GAS override %s exceeds Fusaka per-transaction limit %s; capping to limit",
+                                    base_gas_override,
+                                    MAX_TRANSACTION_GAS,
+                                )
+                                override_value = MAX_TRANSACTION_GAS
+                            base_gas = override_value
+                            self._logger.warning(
+                                "Using ACTION_SAFE_BASE_GAS override; applied baseGas=%s",
+                                base_gas,
+                            )
                         except ValueError:
                             self._logger.warning(
-                                "Invalid ACTION_SAFE_BASE_GAS override '%s'; using default %s",
+                                "Invalid ACTION_SAFE_BASE_GAS override '%s'; keeping configured baseGas %s",
                                 base_gas_override,
-                                DEFAULT_BASE_GAS,
+                                base_gas,
                             )
 
                     safe_gas_price = 0
@@ -733,7 +824,21 @@ class ActionRecorder:
                     refund_receiver = ZERO_ADDRESS
 
                     # Fetch Safe nonce with fallback
-                    safe_nonce = self._get_safe_nonce_with_fallback(safe)
+                    try:
+                        safe_nonce, safe_nonce_is_fallback = self._get_safe_nonce_with_fallback(
+                            safe
+                        )
+                    except RuntimeError as exc:
+                        self._logger.error(
+                            "Failed to resolve Safe nonce; aborting execTransaction: %s",
+                            exc,
+                        )
+                        return
+                    if safe_nonce_is_fallback:
+                        self._logger.warning(
+                            "Safe nonce fallback in effect; delaying execTransaction submission to avoid stale nonce"
+                        )
+                        return
                     try:
                         self._logger.info(f"Safe nonce: {safe_nonce}")
                     except Exception:
@@ -872,6 +977,9 @@ class ActionRecorder:
                         configured_gas += exec_intrinsic_gas
                     else:
                         configured_gas = max(exec_intrinsic_gas, MIN_GAS)
+                    configured_gas = self._cap_transaction_gas(
+                        configured_gas, "Configured Safe.execTransaction gas limit"
+                    )
                     try:
                         self._logger.debug(
                             "Safe gas config: safeTxGas=%s baseGas=%s intrinsic=%s limit=%s",
@@ -978,17 +1086,67 @@ class ActionRecorder:
                         refund_receiver,
                         signatures,
                         estimate_params,
+                        intrinsic_gas_hint=exec_intrinsic_gas,
                     )
 
                     if gas_limit is not None:
                         if configured_gas != MIN_GAS:
                             gas_limit = max(gas_limit, configured_gas)
-                        transaction_dict["gas"] = gas_limit
+                        transaction_dict["gas"] = self._cap_transaction_gas(
+                            gas_limit, "Safe.execTransaction gas limit (estimate)"
+                        )
                     elif configured_gas != MIN_GAS:
-                        transaction_dict["gas"] = configured_gas
+                        transaction_dict["gas"] = self._cap_transaction_gas(
+                            configured_gas, "Safe.execTransaction gas limit (configured)"
+                        )
+                        try:
+                            self._logger.warning(
+                                "Using configured Safe gas limit %s due to failed estimation",
+                                configured_gas,
+                            )
+                        except Exception:
+                            pass
                     else:
-                        # Increased fallback gas to handle complex Safe transactions
-                        transaction_dict["gas"] = 800_000
+                        intrinsic_floor = max(
+                            exec_intrinsic_gas + SAFE_FALLBACK_ADDITIONAL_BUFFER,
+                            outer_requirement + exec_intrinsic_gas,
+                            SAFE_MIN_FALLBACK_GAS,
+                        )
+                        transaction_dict["gas"] = self._cap_transaction_gas(
+                            intrinsic_floor, "Safe.execTransaction gas limit (fallback)"
+                        )
+                        try:
+                            self._logger.warning(
+                                "Falling back to intrinsic-based Safe gas limit %s "
+                                "(estimation unavailable, intrinsic=%s outer_req=%s)",
+                                intrinsic_floor,
+                                exec_intrinsic_gas,
+                                outer_requirement,
+                            )
+                        except Exception:
+                            pass
+
+                    # Ensure no other transaction consumed the nonce while building this one.
+                    refreshed_nonce: Optional[int]
+                    try:
+                        refreshed_nonce = w3.eth.get_transaction_count(
+                            account.address, "pending"
+                        )
+                    except Exception as exc:
+                        refreshed_nonce = None
+                        self._logger.debug(
+                            "Failed to refresh nonce prior to signing Safe.execTransaction: %s",
+                            exc,
+                        )
+                    if refreshed_nonce is not None and refreshed_nonce > nonce:
+                        self._logger.info(
+                            "Pending nonce advanced from %s to %s during Safe.execTransaction construction; retrying",
+                            nonce,
+                            refreshed_nonce,
+                        )
+                        self._nonce_cache = refreshed_nonce
+                        time.sleep(NONCE_RETRY_DELAY_SECONDS)
+                        continue
 
                     signed = w3.eth.account.sign_transaction(
                         transaction_dict, private_key=private_key
@@ -1056,7 +1214,7 @@ class ActionRecorder:
                     except Exception:
                         pass
                     self._nonce_cache = int(next_nonce)
-                    time.sleep(0.2)
+                    time.sleep(NONCE_RETRY_DELAY_SECONDS)
                     continue
                 raise
             except Exception as exc:
@@ -1095,7 +1253,7 @@ class ActionRecorder:
                     except Exception:
                         pass
                     self._nonce_cache = int(next_nonce)
-                    time.sleep(0.2)
+                    time.sleep(NONCE_RETRY_DELAY_SECONDS)
                     continue
                 raise
             except ContractLogicError as exc:
@@ -1108,6 +1266,150 @@ class ActionRecorder:
                 self._nonce_cache = None
                 raise
 
+    def _refresh_safe_owner_status(
+        self,
+        safe_contract: Optional[Contract] = None,
+        account: Optional[LocalAccount] = None,
+        *,
+        force: bool = False,
+        context: str = "operation",
+        log_snapshot: bool = False,
+    ) -> bool:
+        """Refresh Safe owner cache and ensure the agent EOA remains an owner."""
+        safe = safe_contract or self._safe_contract
+        acct = account or self._account
+        if safe is None or acct is None:
+            return False
+
+        now = time.time()
+        try:
+            account_checksum = Web3.to_checksum_address(acct.address)
+        except Exception:
+            account_checksum = acct.address
+
+        cached_threshold = self._safe_owner_threshold
+        if (
+            not force
+            and self._last_safe_owner_check
+            and now - self._last_safe_owner_check < SAFE_OWNER_REFRESH_INTERVAL_SECONDS
+            and self._safe_owner_snapshot is not None
+        ):
+            if cached_threshold and cached_threshold > 1:
+                self._logger.error(
+                    "Safe threshold is %s but only one signature is provided; transaction (%s) would revert",
+                    cached_threshold,
+                    context,
+                )
+                return False
+            if account_checksum in self._safe_owner_snapshot:
+                return True
+            self._logger.error(
+                "Cached Safe owners indicate agent EOA is no longer an owner; aborting (%s)",
+                context,
+            )
+            return False
+
+        try:
+            owners_raw = list(safe.functions.getOwners().call())
+        except Exception as exc:
+            self._logger.warning(
+                "Failed to refresh Safe owners during %s check: %s", context, exc
+            )
+            if self._safe_owner_snapshot is None:
+                return False
+            return account_checksum in self._safe_owner_snapshot
+
+        try:
+            threshold = int(safe.functions.getThreshold().call())
+        except Exception:
+            threshold = None
+
+        normalized_owner_set: Set[str] = set()
+        for owner in owners_raw:
+            try:
+                normalized_owner_set.add(Web3.to_checksum_address(owner))
+            except Exception:
+                continue
+
+        previous_snapshot = self._safe_owner_snapshot
+        previous_threshold = self._safe_owner_threshold
+
+        self._safe_owner_snapshot = normalized_owner_set
+        self._safe_owner_threshold = threshold
+        self._last_safe_owner_check = now
+
+        if log_snapshot:
+            self._logger.info(
+                f"Safe owners (n={len(normalized_owner_set)}): {sorted(normalized_owner_set)}"
+            )
+            self._logger.info(
+                f"Safe threshold: {threshold if threshold is not None else 'unknown'}"
+            )
+
+        if previous_snapshot is not None and normalized_owner_set != previous_snapshot:
+            added = sorted(normalized_owner_set - previous_snapshot)
+            removed = sorted(previous_snapshot - normalized_owner_set)
+            self._logger.warning(
+                "Safe owner set changed during %s check; added=%s removed=%s",
+                context,
+                added or ["<none>"],
+                removed or ["<none>"],
+            )
+
+        if (
+            previous_threshold is not None
+            and threshold is not None
+            and threshold != previous_threshold
+        ):
+            self._logger.warning(
+                "Safe threshold changed from %s to %s during %s check",
+                previous_threshold,
+                threshold,
+                context,
+            )
+
+        if threshold and threshold > 1:
+            self._logger.error(
+                "Safe threshold is %s but only one signature is provided; transaction will revert (%s)",
+                threshold,
+                context,
+            )
+            return False
+
+        is_owner = account_checksum in normalized_owner_set
+        if not is_owner:
+            self._logger.error(
+                "Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)"
+            )
+        return is_owner
+
+    def _compute_record_action_hash(
+        self, action_id: int, nonce_hex: str, timestamp: int
+    ) -> Optional[HexBytes]:
+        """Derive the recordAction hash used for signature verification."""
+        try:
+            nonce_bytes = HexBytes(nonce_hex)
+        except Exception as exc:
+            self._logger.error(
+                f"Invalid nonce '{nonce_hex}' for recordAction hash: {exc}"
+            )
+            return None
+        if len(nonce_bytes) != 32:
+            self._logger.error(
+                "Nonce for recordAction hash must be 32 bytes; aborting verification"
+            )
+            return None
+        try:
+            return Web3.solidity_keccak(
+                ["uint8", "bytes32", "uint256"],
+                [int(action_id), nonce_bytes, int(timestamp)],
+            )
+        except Exception as exc:
+            self._logger.error(
+                f"Failed to compute recordAction hash for verification: {exc}"
+            )
+            return None
+
     def _resolve_nonce(self) -> int:
         """Return the next transaction nonce, caching between submissions."""
         if self._w3 is None or self._account is None:
@@ -1118,8 +1420,8 @@ class ActionRecorder:
             )
         return self._nonce_cache
 
-    def _get_safe_nonce_with_fallback(self, safe: Contract) -> int:
-        """Fetch the Safe nonce, falling back to stored values when RPC fails."""
+    def _get_safe_nonce_with_fallback(self, safe: Contract) -> Tuple[int, bool]:
+        """Fetch the Safe nonce with retries; return fallback flag when cache is used."""
         cache_key = "__default__"
         safe_address = None
         try:
@@ -1133,22 +1435,48 @@ class ActionRecorder:
                 cache_key = safe_address.lower()
 
         last_saved = self._safe_nonce_cache.get(cache_key)
-        try:
-            safe_nonce = int(safe.functions.nonce().call())
-        except Exception as exc:
-            self._logger.warning(f"Failed to fetch Safe nonce: {exc}")
-            fallback_nonce = 1 if last_saved is None else max(last_saved + 1, 1)
-            safe_nonce = fallback_nonce
+        safe_nonce: Optional[int] = None
+        last_exc: Optional[Exception] = None
+        for attempt in range(1, SAFE_NONCE_MAX_ATTEMPTS + 1):
             try:
-                self._logger.info(
-                    "Using fallback Safe nonce %s (last saved %s)",
-                    safe_nonce,
+                safe_nonce = int(safe.functions.nonce().call())
+                break
+            except Exception as exc:
+                last_exc = exc
+                try:
+                    self._logger.warning(
+                        "Failed to fetch Safe nonce (attempt %s/%s): %s",
+                        attempt,
+                        SAFE_NONCE_MAX_ATTEMPTS,
+                        exc,
+                    )
+                except Exception:
+                    pass
+                if attempt < SAFE_NONCE_MAX_ATTEMPTS:
+                    time.sleep(SAFE_NONCE_FETCH_RETRY_DELAY_SECONDS)
+
+        if safe_nonce is not None:
+            self._safe_nonce_cache[cache_key] = safe_nonce
+            return safe_nonce, False
+
+        fallback_nonce: Optional[int] = None
+        if last_saved is not None:
+            fallback_nonce = max(last_saved + 1, 1)
+            try:
+                self._logger.warning(
+                    "Using fallback Safe nonce %s (last saved %s) after %s attempts",
+                    fallback_nonce,
                     last_saved,
+                    SAFE_NONCE_MAX_ATTEMPTS,
                 )
             except Exception:
                 pass
-        self._safe_nonce_cache[cache_key] = safe_nonce
-        return safe_nonce
+            self._safe_nonce_cache[cache_key] = fallback_nonce
+            return fallback_nonce, True
+
+        raise RuntimeError(
+            f"Unable to fetch Safe nonce after {SAFE_NONCE_MAX_ATTEMPTS} attempts: {last_exc}"
+        )
 
     def _estimate_gas_safe_exec(
         self,
@@ -1164,6 +1492,7 @@ class ActionRecorder:
         refund_receiver: str,
         signatures: bytes,
         tx_params: Dict[str, Any],
+        intrinsic_gas_hint: Optional[int] = None,
     ) -> Optional[int]:
         """Estimate gas for Safe.execTransaction with a conservative buffer."""
         try:
@@ -1183,12 +1512,61 @@ class ActionRecorder:
             self._logger.debug(f"Gas estimation failed for Safe.execTransaction: {exc}")
             return None
 
-        # Increase buffer to 1.3x and ensure minimum is higher to prevent out of gas
-        buffered = int(gas_estimate * 1.3)
+        intrinsic_gas = intrinsic_gas_hint
+        if intrinsic_gas is None or intrinsic_gas <= 0:
+            intrinsic_gas = self._estimate_exec_intrinsic_gas(
+                safe,
+                to_addr,
+                value,
+                inner_data,
+                operation,
+                safe_tx_gas,
+                base_gas,
+                safe_gas_price,
+                gas_token,
+                refund_receiver,
+                signatures,
+            )
+        # Increase buffer conservatively and enforce a dynamic floor
+        buffered = max(
+            int(gas_estimate * SAFE_GAS_ESTIMATE_BUFFER_MULTIPLIER),
+            gas_estimate + SAFE_GAS_ESTIMATE_MIN_HEADROOM,
+        )
         safe_exec_min = self._compute_safe_exec_min_gas(safe_tx_gas)
         required_with_headroom = safe_exec_min + base_gas + SAFE_EXECUTION_HEADROOM
-        minimum_limit = max(required_with_headroom, 400_000)
-        return max(buffered, minimum_limit)
+        intrinsic_floor = intrinsic_gas + SAFE_INTRINSIC_DYNAMIC_MARGIN
+        minimum_limit = max(required_with_headroom + intrinsic_gas, intrinsic_floor)
+        if buffered < minimum_limit:
+            try:
+                self._logger.warning(
+                    "Safe gas estimate %s below dynamic minimum %s "
+                    "(intrinsic=%s calldata=%s bytes); raising to minimum",
+                    buffered,
+                    minimum_limit,
+                    intrinsic_gas,
+                    len(inner_data),
+                )
+            except Exception:
+                pass
+        return self._cap_transaction_gas(
+            max(buffered, minimum_limit), "Estimated Safe.execTransaction gas limit"
+        )
+
+    def _cap_transaction_gas(self, gas_value: int, context: str) -> int:
+        """Cap gas values to Fusaka per-transaction limit with logging."""
+        gas_int = int(gas_value)
+        if gas_int <= MAX_TRANSACTION_GAS:
+            return gas_int
+        try:
+            self._logger.warning(
+                "%s (%s) exceeds Fusaka per-transaction gas limit (%s); capping to limit",
+                context,
+                gas_int,
+                MAX_TRANSACTION_GAS,
+            )
+        except Exception:
+            pass
+        return MAX_TRANSACTION_GAS
 
     def _estimate_safe_tx_gas(
         self,
@@ -1217,7 +1595,9 @@ class ActionRecorder:
 
         # Cushion the estimate to reduce the risk of underestimation.
         buffered = max(int(gas_estimate * 1.2), gas_estimate + 20_000)
-        return max(buffered, MIN_GAS)
+        return self._cap_transaction_gas(
+            max(buffered, MIN_GAS), "recordAction gas estimate"
+        )
 
     def _compute_safe_exec_min_gas(self, safe_tx_gas: int) -> int:
         """Return the minimum gas Safe.execTransaction expects to remain."""
@@ -1411,6 +1791,14 @@ class ActionRecorder:
             self._nonce_cache = None
         elif "replacement transaction underpriced" in lowered:
             self._logger.debug("Replacement transaction underpriced; bumping fee")
+            self._nonce_cache = None
+        elif "intrinsic gas too low" in lowered or (
+            "insufficient" in lowered and "gas" in lowered
+        ):
+            self._logger.error(
+                "Safe transaction rejected due to insufficient gas; consider adjusting overrides or buffers. "
+                f"Message: {message}"
+            )
             self._nonce_cache = None
         else:
             self._logger.warning(f"RPC error during recordAction: {message}")

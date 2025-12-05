@@ -26,6 +26,7 @@ from web3.exceptions import ContractLogicError
 from web3.middleware import ExtraDataToPOAMiddleware
 from web3.types import TxParams
 
+from .gas_limits import MAX_TRANSACTION_GAS
 from .nonce_utils import get_shared_nonce_lock
 
 DEFAULT_SAFE_ADDRESS = "0xdf5bae4216Dc278313712291c91D2DeAF2Cc9c1c"
@@ -442,7 +443,15 @@ class StakingCheckpointClient:
             checkpoint_fn = self._get_checkpoint_function()
             gas_estimate = checkpoint_fn.estimate_gas(cast(TxParams, tx_params))
             buffered = int(gas_estimate * 1.2)
-            return max(buffered, 200_000)
+            result = max(buffered, 200_000)
+            if result > MAX_TRANSACTION_GAS:
+                self._logger.warning(
+                    "Staking checkpoint gas estimate %s exceeds Fusaka per-transaction limit %s; capping to limit",
+                    result,
+                    MAX_TRANSACTION_GAS,
+                )
+                result = MAX_TRANSACTION_GAS
+            return result
         except Exception as exc:
             self._logger.debug("Gas estimation failed for staking checkpoint: %s", exc)
             return None

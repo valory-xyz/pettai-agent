@@ -15,6 +15,9 @@ PACKAGES_FILE := packages/packages.json
 HASH_FILE := hash_id
 AGENT_ID_FILE := agent_id
 AGENT_DIR := ./agent
+FRONTEND_DIR := frontend
+FRONTEND_BUILD_DIR := $(FRONTEND_DIR)/build
+FRONTEND_BUILD_CMD := yarn --cwd $(FRONTEND_DIR)
 CHECK_TIMEOUT ?= 30
 CHECK_COMMAND ?= ./dist/$(RUNNER_NAME) --version
 CHECK_SEARCH_STRING ?= Pett Agent Runner
@@ -193,10 +196,16 @@ agent.zip: $(AGENT_DIR)
 agent.tar.gz: $(AGENT_DIR)
 	python -c "import shutil; shutil.make_archive('agent', 'gztar', root_dir='.', base_dir='agent')"
 
+.PHONY: build-frontend
+build-frontend:
+	$(FRONTEND_BUILD_CMD) install
+	rm -rf $(FRONTEND_BUILD_DIR)
+	$(FRONTEND_BUILD_CMD) build
+
 # Platform-agnostic PyInstaller build. Here we use the -p . flag to include the project root in the PYTHONPATH.
 # Also, i did hadd setuptools bc the "jaraco" module was not being included in the default PyInstaller hidden imports (unlike it was seen on the https://github.com/valory-xyz/optimus/blob/main/Makefile)
 .PHONY: build-agent-runner
-build-agent-runner: install-deps $(AGENT_DIR)
+build-agent-runner: install-deps $(AGENT_DIR) build-frontend
 	$(PYINSTALLER_CMD) \
 	-p . \
 	--collect-data eth_account \
@@ -208,6 +217,7 @@ build-agent-runner: install-deps $(AGENT_DIR)
 	--hidden-import agent.pett_tools \
 	--hidden-import agent.telegram_bot \
 	--hidden-import agent.olas_interface \
+	--add-data $(FRONTEND_BUILD_DIR):frontend/build \
 	$(shell python $(PYINSTALLER_DEPS_SCRIPT)) \
 	--onefile $(PYINSTALLER_ENTRY) \
 	--name $(RUNNER_NAME)
@@ -215,7 +225,7 @@ build-agent-runner: install-deps $(AGENT_DIR)
 
 # macOS build with codesigning. Here we use the -p . flag to include the project root in the PYTHONPATH as well.
 .PHONY: build-agent-runner-mac
-build-agent-runner-mac: install-deps $(AGENT_DIR)
+build-agent-runner-mac: install-deps $(AGENT_DIR) build-frontend
 	$(PYINSTALLER_CMD) \
 	-p . \
 	--collect-data eth_account \
@@ -226,6 +236,7 @@ build-agent-runner-mac: install-deps $(AGENT_DIR)
 	--hidden-import agent.decision_engine \
 	--hidden-import agent.pett_tools \
 	--hidden-import agent.telegram_bot \
+	--add-data $(FRONTEND_BUILD_DIR):frontend/build \
 	$(shell python $(PYINSTALLER_DEPS_SCRIPT)) \
 	--onefile $(PYINSTALLER_ENTRY) \
 	--codesign-identity "${SIGN_ID}" \

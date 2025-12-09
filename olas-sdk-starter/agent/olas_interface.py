@@ -1246,6 +1246,13 @@ class OlasInterface:
         except Exception:
             pass
 
+        agent_address = self.agent_eoa_address
+        if not agent_address:
+            derived_address = self._derive_agent_address()
+            if derived_address:
+                self.agent_eoa_address = derived_address
+                agent_address = derived_address
+
         health_data: Dict[str, Any] = {
             # New required schema (Pearl-compatible)
             "is_healthy": self.is_healthy,
@@ -1270,11 +1277,7 @@ class OlasInterface:
             },
             # Existing detailed data preserved for our UI and debugging
             "status": self.health_status,
-            "agent_address": (
-                self.ethereum_private_key[:10] + "..."
-                if self.ethereum_private_key
-                else "unknown"
-            ),
+            "agent_address": agent_address or "unknown",
             "withdrawal_mode": False,
             "health_refresh": refresh_result,
             "websocket": {

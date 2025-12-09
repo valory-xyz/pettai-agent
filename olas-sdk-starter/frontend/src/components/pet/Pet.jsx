@@ -91,10 +91,12 @@ export default function Pet({ name, pet, size = 'big', message, isClickable = fa
   const { layers } = useMemo(() => generatePetLayers(pet), [pet]);
   const [errorCount, setErrorCount] = useState(0);
 
+  const layerUrls = useMemo(() => layers.map(l => l.url).join(','), [layers]);
+
   useEffect(() => {
     // reset error counter when layers set changes
     setErrorCount(0);
-  }, [layers.map(l => l.url).join(',')]);
+  }, [layerUrls]);
 
   const showFallback = layers.length === 0 || errorCount >= layers.length;
 

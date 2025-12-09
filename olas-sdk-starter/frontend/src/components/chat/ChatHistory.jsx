@@ -1,15 +1,12 @@
 import React, { useEffect, useMemo, useRef } from 'react';
 import clsx from 'clsx';
 
-const escapeHtml = text =>
-	String(text ?? '')
-		.replace(/&/g, '&amp;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&#39;');
-
-const formatMessage = text => escapeHtml(text).replace(/\n/g, '<br />');
+// Simple text formatter - no HTML needed, CSS will handle line breaks
+const formatMessage = text => {
+	if (!text) return '';
+	// Return plain text - CSS white-space: pre-line will handle newlines
+	return String(text);
+};
 
 const normalizeTimestamp = timestamp => {
 	if (typeof timestamp !== 'number' || Number.isNaN(timestamp)) {
@@ -44,7 +41,7 @@ const ChatHistory = ({ messages = [], isVisible, onClose, onPlayAudio }) => {
 			.filter(Boolean)
 			.map(message => ({
 				...message,
-				safeMessage: formatMessage(message.message ?? ''),
+				formattedMessage: formatMessage(message.message ?? ''),
 				label: formatTimestamp(message.timestamp),
 			}));
 	}, [messages]);
@@ -76,10 +73,9 @@ const ChatHistory = ({ messages = [], isVisible, onClose, onPlayAudio }) => {
 						>
 							<div className="flex justify-between items-start gap-2">
 								<div className="flex-1">
-									<p
-										className="text-sm text-gray-800 whitespace-pre-wrap"
-										dangerouslySetInnerHTML={{ __html: message.safeMessage }}
-									/>
+									<p className="text-sm text-gray-800 whitespace-pre-line">
+										{message.formattedMessage}
+									</p>
 									<p className="text-xs text-gray-500 mt-1">{message.label}</p>
 								</div>
 								{Array.isArray(message.audio) && message.sender === 'pet' && onPlayAudio && (

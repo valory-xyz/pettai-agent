@@ -12,12 +12,6 @@ import headerAssetAip from '../assets/images/header-asset-aip.svg';
 
 // Removed fallback sprite usage; we render layered pet state instead
 
-const Icon = {
-	Logout: ({ className = '' }) => (
-		<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><path fill="currentColor" d="M8 3c-1.11 0-2 .89-2 2v16h12V5c0-1.11-.89-2-2-2zm0 2h8v14H8zm5 6v2h2v-2z" /></svg>
-	),
-};
-
 const LAYOUT_CONSTANTS = {
 	BOTTOM_UI_PADDING: 24,
 	BOTTOM_UI_POSITION_DELAY: 400,
@@ -54,7 +48,6 @@ const Dashboard = () => {
 	const [healthData, setHealthData] = useState(null);
 	const [error, setError] = useState(null);
 	const [isAnimating, setIsAnimating] = useState(true);
-	const [inputMessage, setInputMessage] = useState('');
 	const [animations, setAnimations] = useState([]);
 	const [previousAipBalance, setPreviousAipBalance] = useState(null);
 	const animationTimeoutsRef = useRef([]);
@@ -222,18 +215,7 @@ const Dashboard = () => {
 		return items.sort((a, b) => a.timestamp - b.timestamp);
 	}, [healthData?.recent]);
 
-	const recentActions = useMemo(() => {
-		if (!Array.isArray(healthData?.recent?.actions)) return [];
-		return [...healthData.recent.actions]
-			.filter(Boolean)
-			.sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
-			.slice(0, 10);
-	}, [healthData?.recent?.actions]);
-
 	const lastPetMessage = [...conversation].reverse().find(msg => msg.sender === 'pet');
-
-	// Local user chat state (appended on top of health-derived conversation)
-	const [userChat, setUserChat] = useState([]);
 
 	useEffect(() => {
 		if (typeof window === 'undefined' || !lastPetMessage?.message) return;
@@ -269,36 +251,6 @@ const Dashboard = () => {
 			console.error('[Dashboard] Failed to persist last pet message', storageError);
 		}
 	}, [lastPetMessage?.id, lastPetMessage?.message, lastPetMessage?.timestamp]);
-	/* const remainingMessages = 10;
-	const canSendMessage = inputMessage.trim().length > 0;
-
-	const allMessages = useMemo(() => {
-		return [...conversation, ...userChat].sort((a, b) => a.timestamp - b.timestamp);
-	}, [conversation, userChat]);
- */
-	const handleSend = async () => {
-		const text = inputMessage.trim();
-		if (!text) return;
-		const now = Date.now() / 1000; // Convert to seconds
-		const userMsg = { id: `u-${now}`, sender: 'user', message: text, timestamp: now };
-		const loadingId = `l-${now}`;
-		const loadingMsg = { id: loadingId, sender: 'pet', message: '…', timestamp: now + 1, loading: true };
-		setUserChat(prev => [...prev, userMsg, loadingMsg]);
-		setInputMessage('');
-
-		try {
-			const res = await fetch('/api/chat', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ message: text }),
-			});
-			const data = await res.json().catch(() => ({}));
-			const reply = data?.response || 'sorry i cant talk rn';
-			setUserChat(prev => prev.map(m => (m.id === loadingId ? { ...m, message: reply, loading: false } : m)));
-		} catch (_e) {
-			setUserChat(prev => prev.map(m => (m.id === loadingId ? { ...m, message: 'sorry i cant talk rn', loading: false, error: true } : m)));
-		}
-	};
 
 	const statsSummary = healthData?.pet?.stats ?? {};
 	const economyMode = healthData?.economy_mode ?? null;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -82,12 +82,44 @@ const AppRouter = () => {
 
 // Main App component
 function App() {
+  const privyAppId = process.env.REACT_APP_PRIVY_APP_ID;
+
+  if (!privyAppId) {
+    console.error(
+      '[App] REACT_APP_PRIVY_APP_ID environment variable is required'
+    );
+    return (
+      <div className="App">
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            minHeight: '100vh',
+            flexDirection: 'column',
+            gap: '1rem',
+            padding: '2rem',
+            textAlign: 'center',
+          }}
+        >
+          <h1
+            style={{ color: '#ef4444', fontSize: '1.5rem', fontWeight: 'bold' }}
+          >
+            Configuration Error
+          </h1>
+          <p style={{ color: '#6b7280' }}>
+            REACT_APP_PRIVY_APP_ID environment variable is not set. Please
+            configure it in your environment.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="App">
       <PrivyProvider
-        appId={
-          process.env.REACT_APP_PRIVY_APP_ID || 'cm7gev5s600vbk2lsj6e1e9g7'
-        }
+        appId={privyAppId}
         config={{
           loginMethods: ['email', 'wallet'],
           appearance: {

@@ -196,8 +196,14 @@ agent.zip: $(AGENT_DIR)
 agent.tar.gz: $(AGENT_DIR)
 	python -c "import shutil; shutil.make_archive('agent', 'gztar', root_dir='.', base_dir='agent')"
 
+.PHONY: check-frontend-env
+check-frontend-env:
+	@echo "Checking frontend environment variables..."
+	@cd $(FRONTEND_DIR) && node check-env.js || (echo "❌ Frontend environment check failed. Please fix .env file." && exit 1)
+
 .PHONY: build-frontend
-build-frontend:
+build-frontend: check-frontend-env
+	@echo "Building frontend (React Scripts will automatically load .env file)..."
 	$(FRONTEND_BUILD_CMD) install
 	rm -rf $(FRONTEND_BUILD_DIR)
 	$(FRONTEND_BUILD_CMD) build

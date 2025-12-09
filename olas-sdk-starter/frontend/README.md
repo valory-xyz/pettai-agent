@@ -12,19 +12,40 @@ The Python backend automatically handles:
 
 ## Configuration
 
-1. Copy `.env.example` to `.env`:
+### Environment Variables
+
+The frontend requires a `.env` file with the following required variable:
+
+- `REACT_APP_PRIVY_APP_ID` - Your Privy App ID (required for authentication)
+
+### Setup
+
+1. **Automatic Setup**: The build process will automatically create a `.env` file from `.env.example` if it doesn't exist.
+
+2. **Manual Setup**: Copy `.env.example` to `.env` and update the values:
 
    ```bash
    cp .env.example .env
    ```
 
-2. Set your Privy App ID in `.env`:
+3. **Set your Privy App ID** in `.env`:
    ```
    REACT_APP_PRIVY_APP_ID=your-privy-app-id
-   PORT=3000
-   BROWSER=none
-   GENERATE_SOURCEMAP=false
    ```
+
+### Environment Checks
+
+The project includes automated environment variable checks:
+
+- **Before build/start**: The `check-env.js` script automatically runs via npm `prestart` and `prebuild` hooks
+- **Makefile**: The `build-frontend` target includes an environment check
+- **Manual check**: Run `npm run check-env` to verify your `.env` file
+
+If `.env` is missing or has invalid values, the check will:
+
+- Create `.env` from `.env.example` if missing
+- Report missing or empty required variables
+- Exit with an error to prevent builds with invalid configuration
 
 **Note:** `GENERATE_SOURCEMAP=false` suppresses source map warnings from WalletConnect and other dependencies. Python automatically sets this when running the dev server.
 

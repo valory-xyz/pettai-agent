@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 
 import backgroundMain from '../assets/images/background-3.jpg';
 import backgroundOverlay from '../assets/images/background-0.jpg';
-import headerAssetAip from '../assets/images/header-asset-aip.svg';
 
 // Local lightweight Icon set copied from PetStat for consistent visuals
 const Icon = {
@@ -233,10 +232,10 @@ const ActionHistory = () => {
 	const [history, setHistory] = useState({ actions: [], epoch: null, completed: 0, required_actions: 0 });
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
-	const [balanceDisplay, setBalanceDisplay] = useState('0.0000');
 	const [isInfoOpen, setIsInfoOpen] = useState(false);
 	const bubbleHoverRef = useRef(false);
 	const closeTimerRef = useRef(null);
+	const styleRef = useRef(null);
 
 	const handleInfoOpen = useCallback(() => {
 		setIsInfoOpen(true);
@@ -296,32 +295,9 @@ const ActionHistory = () => {
 		}
 	}, []);
 
-	const fetchBalance = useCallback(async () => {
-		try {
-			const res = await fetch('/api/health');
-			if (!res.ok) {
-				throw new Error(`Balance request failed with status ${res.status}`);
-			}
-			const data = await res.json();
-			const raw = data?.pet?.balance ?? data?.pet_balance;
-			if (raw === undefined || raw === null) {
-				setBalanceDisplay('0.0000');
-				return;
-			}
-
-			const numeric = Number(raw);
-			setBalanceDisplay(Number.isFinite(numeric) ? numeric.toFixed(4) : String(raw));
-		} catch (err) {
-			console.error('[ActionHistory] Failed to load balance', err);
-		}
-	}, []);
-
 	useEffect(() => {
 		loadHistory();
-		fetchBalance();
-		const intervalId = setInterval(fetchBalance, 10000);
-		return () => clearInterval(intervalId);
-	}, [loadHistory, fetchBalance]);
+	}, [loadHistory]);
 
 	useEffect(() => {
 		return () => {
@@ -329,6 +305,13 @@ const ActionHistory = () => {
 				clearTimeout(closeTimerRef.current);
 			}
 		};
+	}, []);
+
+	// Safely inject CSS styles using textContent (safer than dangerouslySetInnerHTML for CSS)
+	useEffect(() => {
+		if (styleRef.current) {
+			styleRef.current.textContent = SCROLLBAR_STYLES;
+		}
 	}, []);
 
 	const getTimestampValue = value => {
@@ -387,7 +370,7 @@ const ActionHistory = () => {
 				backgroundColor: '#2e1065',
 			}}
 		>
-			<style dangerouslySetInnerHTML={{ __html: SCROLLBAR_STYLES }} />
+			<style ref={styleRef} />
 			<div
 				className="fixed inset-0"
 				style={{

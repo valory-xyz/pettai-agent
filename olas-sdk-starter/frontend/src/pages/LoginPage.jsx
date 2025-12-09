@@ -7,7 +7,7 @@ import backgroundOverlay from '../assets/images/background-0.jpg';
 import './LoginPage.scss';
 
 const LoginPage = () => {
-  const { login, isModalOpen, wsPet, authFailed, authenticated, authError } = useAuth();
+  const { login, isModalOpen, wsPet, authenticated } = useAuth();
   const hasCalledLogin = useRef(false);
   const privyModalHeight = usePrivyModalHeight();
   const navigate = useNavigate();

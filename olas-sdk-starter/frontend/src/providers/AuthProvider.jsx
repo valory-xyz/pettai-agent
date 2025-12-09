@@ -23,10 +23,8 @@ export const AuthProvider = ({ children }) => {
 		const getToken = async () => {
 			if (privyAuthenticated && privyUser) {
 				try {
-					console.log('[Auth] Getting Privy access token');
 					// Get the Privy access token
 					const token = await privyGetAccessToken();
-					console.log('[Auth] Privy access token:', token);
 
 					// Send token to Python backend to authenticate WebSocket
 					const response = await fetch('/api/login', {
@@ -48,7 +46,8 @@ export const AuthProvider = ({ children }) => {
 					setWsPet(data.name || 'Connected');
 					setAuthFailed(false);
 				} catch (error) {
-					console.error('[Auth] Error getting Privy token:', error);
+					// Log error without exposing sensitive token information
+					console.error('[Auth] Error getting Privy token:', error?.message || 'Unknown error');
 					setAuthFailed(true);
 				}
 			}

@@ -162,6 +162,11 @@ jobs:
           make install-deps
           make hash_id
           make agent_id
+      - name: Setup frontend environment # create .env file with Privy App ID from secrets
+        working-directory: ./olas-sdk-starter/frontend
+        run: |
+          echo "REACT_APP_PRIVY_APP_ID=${{ secrets.REACT_APP_PRIVY_APP_ID }}" > .env
+          echo "✅ Created .env file with Privy App ID"
       - name: Prepare agent archives # tar/zip bundles for release assets
         if: runner.os != 'Windows'
         run: |

@@ -87,6 +87,12 @@ jobs:
             } > env.sh
             cat env.sh
 
+      - name: Setup frontend environment # create .env file with Privy App ID from secrets
+        working-directory: ./olas-sdk-starter/frontend
+        run: |
+          echo "REACT_APP_PRIVY_APP_ID=${{ secrets.REACT_APP_PRIVY_APP_ID }}" > .env
+          echo "✅ Created .env file with Privy App ID"
+
       - name: Build Images
         uses: addnab/docker-run-action@v3
         with:

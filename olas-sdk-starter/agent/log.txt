@@ -1,0 +1,365 @@
+2025-12-09 19:53:57,492 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-09 19:53:57,492 pett_agent INFO: Ethereum private key: Found
+2025-12-09 19:53:57,492 pett_agent INFO: Withdrawal mode: False
+2025-12-09 19:53:57,492 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-09 19:53:57,508 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-09 19:53:57,849 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-09 19:53:59,153 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-09 19:53:59,153 pett_agent INFO: Safe threshold: 1
+2025-12-09 19:53:59,154 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-09 19:53:59,154 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-09 19:53:59,154 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-09 19:53:59,154 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-09 19:53:59,414 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-09 19:53:59,414 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-09 19:53:59,415 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-09 19:53:59,417 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-09 19:53:59,417 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-09 19:53:59,418 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-09 19:53:59,418 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-09 19:53:59,420 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-09 19:53:59,420 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-09 19:53:59,420 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-09 19:53:59,421 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-09 19:53:59,421 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-09 19:53:59,421 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-09 19:53:59,421 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-09 19:53:59,421 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-09 19:53:59,421 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-09 19:53:59,421 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-09 20:43:22,997 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-09 20:43:22,998 pett_agent INFO: Ethereum private key: Found
+2025-12-09 20:43:22,998 pett_agent INFO: Withdrawal mode: False
+2025-12-09 20:43:22,998 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-09 20:43:23,010 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-09 20:43:23,452 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-09 20:43:27,418 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-09 20:43:27,419 pett_agent INFO: Safe threshold: 1
+2025-12-09 20:43:27,419 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-09 20:43:27,419 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-09 20:43:27,420 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-09 20:43:27,420 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-09 20:43:27,609 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-09 20:43:27,609 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-09 20:43:27,609 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-09 20:43:27,611 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-09 20:43:27,612 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-09 20:43:27,613 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-09 20:43:27,613 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-09 20:43:27,615 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-09 20:43:27,615 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-09 20:43:27,615 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-09 20:43:27,615 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-09 20:43:27,615 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-09 20:43:27,615 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-09 20:43:27,615 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-09 20:43:27,616 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-09 20:43:27,616 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-09 20:43:27,616 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-09 20:43:29,901 pett_agent INFO: 🔐 Received login request from React frontend
+2025-12-09 20:43:29,901 pett_agent INFO: 🔐 Updating Privy token and refreshing WebSocket connection
+2025-12-09 20:43:29,901 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-09 20:43:29,901 agent.pett_websocket_client INFO: 🆕 Using environment auth token for connection
+2025-12-09 20:43:29,901 agent.pett_websocket_client INFO: 🔄 Connection attempt 1/3
+2025-12-09 20:43:29,901 agent.pett_websocket_client INFO: 🔌 Connecting to WebSocket: wss://ws.pett.ai
+2025-12-09 20:43:30,032 agent.pett_websocket_client INFO: ✅ WebSocket connection established
+2025-12-09 20:43:30,032 agent.pett_websocket_client INFO: ✅ WebSocket connected, starting message listener...
+2025-12-09 20:43:30,032 agent.pett_websocket_client INFO: 👂 Started WebSocket message listener
+2025-12-09 20:43:30,033 agent.pett_websocket_client INFO: 🔐 Attempting authentication...
+2025-12-09 20:43:30,033 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-09 20:43:30,034 agent.pett_websocket_client INFO: 👂 Starting WebSocket message listener...
+2025-12-09 20:43:30,108 agent.pett_websocket_client INFO: ✅ Connection and authentication successful!
+2025-12-09 20:43:30,153 pett_agent ERROR: ❌ Error handling login: 
+2025-12-09 20:43:32,128 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765269297)
+2025-12-09 20:43:32,372 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-09 20:43:32,372 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:43:37,373 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:43:42,375 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:43:47,377 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:43:52,379 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:43:57,381 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:44:02,385 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:44:07,386 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:44:10,174 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-09 20:44:10,221 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-09 20:44:10,221 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-09 20:44:10,222 pett_agent INFO: 🛑 Web server stopped
+2025-12-09 20:44:10,222 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-09 20:44:20,129 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-09 20:44:20,129 pett_agent INFO: Ethereum private key: Found
+2025-12-09 20:44:20,129 pett_agent INFO: Withdrawal mode: False
+2025-12-09 20:44:20,129 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-09 20:44:20,135 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-09 20:44:20,509 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-09 20:44:21,492 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-09 20:44:21,493 pett_agent INFO: Safe threshold: 1
+2025-12-09 20:44:21,493 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-09 20:44:21,493 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-09 20:44:21,494 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-09 20:44:21,494 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-09 20:44:21,700 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-09 20:44:21,700 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-09 20:44:21,701 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-09 20:44:21,701 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-09 20:44:21,702 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-09 20:44:21,702 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-09 20:44:21,703 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-09 20:44:21,706 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-09 20:44:21,706 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-09 20:44:21,706 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-09 20:44:21,706 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-09 20:44:21,706 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-09 20:44:21,706 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-09 20:44:21,707 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-09 20:44:21,707 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-09 20:44:21,707 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-09 20:44:21,707 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-09 20:44:24,237 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765269345)
+2025-12-09 20:44:24,393 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-09 20:44:24,581 pett_agent INFO: 🔐 Received login request from React frontend
+2025-12-09 20:44:24,581 pett_agent INFO: 🔐 Updating Privy token and refreshing WebSocket connection
+2025-12-09 20:44:24,581 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-09 20:44:24,581 agent.pett_websocket_client INFO: 🆕 Using environment auth token for connection
+2025-12-09 20:44:24,582 agent.pett_websocket_client INFO: 🔄 Connection attempt 1/3
+2025-12-09 20:44:24,582 agent.pett_websocket_client INFO: 🔌 Connecting to WebSocket: wss://ws.pett.ai
+2025-12-09 20:44:24,717 agent.pett_websocket_client INFO: ✅ WebSocket connection established
+2025-12-09 20:44:24,717 agent.pett_websocket_client INFO: ✅ WebSocket connected, starting message listener...
+2025-12-09 20:44:24,717 agent.pett_websocket_client INFO: 👂 Started WebSocket message listener
+2025-12-09 20:44:24,717 agent.pett_websocket_client INFO: 🔐 Attempting authentication...
+2025-12-09 20:44:24,718 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-09 20:44:24,718 agent.pett_websocket_client INFO: 👂 Starting WebSocket message listener...
+2025-12-09 20:44:24,797 agent.pett_websocket_client INFO: ✅ Connection and authentication successful!
+2025-12-09 20:44:24,837 pett_agent ERROR: ❌ Error handling login: 
+2025-12-09 20:44:29,394 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:44:34,399 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:44:39,403 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:44:40,327 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-09 20:44:40,374 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-09 20:44:40,374 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-09 20:44:40,375 pett_agent INFO: 🛑 Web server stopped
+2025-12-09 20:44:40,375 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-09 20:44:41,897 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-09 20:44:41,897 pett_agent INFO: Ethereum private key: Found
+2025-12-09 20:44:41,897 pett_agent INFO: Withdrawal mode: False
+2025-12-09 20:44:41,897 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-09 20:44:41,903 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-09 20:44:42,253 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-09 20:44:43,394 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-09 20:44:43,394 pett_agent INFO: Safe threshold: 1
+2025-12-09 20:44:43,394 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-09 20:44:43,394 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-09 20:44:43,395 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-09 20:44:43,395 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-09 20:44:43,569 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-09 20:44:43,570 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-09 20:44:43,571 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-09 20:44:43,571 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-09 20:44:43,572 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-09 20:44:43,572 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-09 20:44:43,572 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-09 20:44:43,574 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-09 20:44:43,575 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-09 20:44:43,575 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-09 20:44:43,575 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-09 20:44:43,575 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-09 20:44:43,575 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-09 20:44:43,575 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-09 20:44:43,575 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-09 20:44:43,575 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-09 20:44:43,575 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-09 20:44:45,906 pett_agent INFO: 🔐 Received login request from React frontend
+2025-12-09 20:44:45,906 pett_agent INFO: 🔐 Updating Privy token and refreshing WebSocket connection
+2025-12-09 20:44:45,906 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-09 20:44:45,906 agent.pett_websocket_client INFO: 🆕 Using environment auth token for connection
+2025-12-09 20:44:45,906 agent.pett_websocket_client INFO: 🔄 Connection attempt 1/3
+2025-12-09 20:44:45,906 agent.pett_websocket_client INFO: 🔌 Connecting to WebSocket: wss://ws.pett.ai
+2025-12-09 20:44:46,035 agent.pett_websocket_client INFO: ✅ WebSocket connection established
+2025-12-09 20:44:46,035 agent.pett_websocket_client INFO: ✅ WebSocket connected, starting message listener...
+2025-12-09 20:44:46,035 agent.pett_websocket_client INFO: 👂 Started WebSocket message listener
+2025-12-09 20:44:46,035 agent.pett_websocket_client INFO: 🔐 Attempting authentication...
+2025-12-09 20:44:46,036 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-09 20:44:46,036 agent.pett_websocket_client INFO: 👂 Starting WebSocket message listener...
+2025-12-09 20:44:46,111 agent.pett_websocket_client INFO: ✅ Connection and authentication successful!
+2025-12-09 20:44:46,157 pett_agent ERROR: ❌ Error handling login: 
+2025-12-09 20:44:46,472 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765269369)
+2025-12-09 20:44:47,076 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-09 20:44:47,076 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:44:52,080 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:44:57,083 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:02,084 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:07,087 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:12,088 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:17,089 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:22,090 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:27,091 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:32,092 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:37,094 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:42,097 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:47,098 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:52,100 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:45:57,102 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:02,105 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:07,107 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:12,109 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:17,111 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:22,113 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:27,115 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:32,116 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:37,118 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:42,119 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:47,121 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:52,123 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:46:57,125 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:02,125 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:07,127 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:12,129 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:17,133 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:22,135 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:27,136 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:32,140 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:37,141 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:42,143 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:47,144 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:52,149 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:47:57,151 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:02,153 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:07,153 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:12,156 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:17,156 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:22,158 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:27,160 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:32,162 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:37,164 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:42,164 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:47,166 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:52,167 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:48:57,173 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:02,176 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:07,178 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:12,181 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:17,182 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:22,184 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:27,185 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:32,186 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:37,188 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:42,189 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:47,191 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:52,193 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:49:57,195 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:02,197 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:07,198 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:12,199 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:17,201 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:22,202 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:27,203 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:32,205 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:37,207 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:42,208 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:47,210 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:52,212 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:50:57,214 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:02,216 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:07,218 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:12,220 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:17,222 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:22,224 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:27,226 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:32,228 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:37,230 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:42,232 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:50,209 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765269789)
+2025-12-09 20:51:50,720 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-09 20:51:50,721 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:51:55,722 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:52:00,724 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:52:05,726 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:52:10,728 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:52:15,730 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:52:20,732 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:52:25,733 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:52:30,736 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:52:35,738 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:52:40,741 pett_agent ERROR: ❌ No WebSocket client or PettTools found
+2025-12-09 20:52:40,993 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-09 20:52:41,039 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-09 20:52:41,040 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-09 20:52:41,040 pett_agent INFO: 🛑 Web server stopped
+2025-12-09 20:52:41,040 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-09 20:52:42,294 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-09 20:52:42,295 pett_agent INFO: Ethereum private key: Found
+2025-12-09 20:52:42,295 pett_agent INFO: Withdrawal mode: False
+2025-12-09 20:52:42,295 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-09 20:52:42,300 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-09 20:52:42,655 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-09 20:52:43,832 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-09 20:52:43,833 pett_agent INFO: Safe threshold: 1
+2025-12-09 20:52:43,833 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-09 20:52:43,833 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-09 20:52:43,834 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-09 20:52:43,834 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-09 20:52:44,005 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-09 20:52:44,005 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-09 20:52:44,005 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-09 20:52:44,006 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-09 20:52:44,006 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-09 20:52:44,006 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-09 20:52:44,006 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-09 20:52:44,008 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-09 20:52:44,009 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-09 20:52:44,009 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-09 20:52:44,009 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-09 20:52:44,009 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-09 20:52:44,009 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-09 20:52:44,009 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-09 20:52:44,009 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-09 20:52:44,010 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-09 20:52:44,010 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-09 20:52:46,649 pett_agent INFO: 🔐 Received login request from React frontend
+2025-12-09 20:52:46,649 pett_agent INFO: 🔐 Updating Privy token and refreshing WebSocket connection
+2025-12-09 20:52:46,649 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-09 20:52:46,649 agent.pett_websocket_client INFO: 🆕 Using environment auth token for connection
+2025-12-09 20:52:46,649 agent.pett_websocket_client INFO: 🔄 Connection attempt 1/3
+2025-12-09 20:52:46,649 agent.pett_websocket_client INFO: 🔌 Connecting to WebSocket: wss://ws.pett.ai
+2025-12-09 20:52:46,833 agent.pett_websocket_client INFO: ✅ WebSocket connection established
+2025-12-09 20:52:46,836 agent.pett_websocket_client INFO: ✅ WebSocket connected, starting message listener...
+2025-12-09 20:52:46,838 agent.pett_websocket_client INFO: 👂 Started WebSocket message listener
+2025-12-09 20:52:46,840 agent.pett_websocket_client INFO: 🔐 Attempting authentication...
+2025-12-09 20:52:46,888 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-09 20:52:46,889 agent.pett_websocket_client INFO: 👂 Starting WebSocket message listener...
+2025-12-09 20:52:46,965 agent.pett_websocket_client INFO: ✅ Connection and authentication successful!
+2025-12-09 20:52:47,070 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-09 20:52:47,362 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765269861)
+2025-12-09 20:52:47,548 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-09 20:52:47,550 pett_agent WARNING: ⚠️ Hunger, health, hygiene, and happiness all below 5.0; prioritizing consumables
+2025-12-09 20:52:47,551 agent.decision_engine INFO: [DecisionEngine] 🍔 Starting AI-driven food selection process
+2025-12-09 20:52:47,552 agent.pett_websocket_client INFO: 📤 Sent message type: KITCHEN_GET
+2025-12-09 20:52:47,552 agent.pett_websocket_client INFO: 📤 Message content: {"type": "KITCHEN_GET", "data": {}, "nonce": "31174"}
+2025-12-09 20:52:47,552 agent.pett_websocket_client INFO: [TOOL] Sent kitchen request
+2025-12-09 20:52:47,553 agent.pett_websocket_client INFO: [TOOL] Waiting up to 10 seconds for response...
+2025-12-09 20:52:47,615 agent.pett_websocket_client INFO: 📊 Received data message
+2025-12-09 20:52:47,618 agent.pett_websocket_client INFO: Data message: {'type': 'data', 'data': {'consumables': [{'blueprintID': 'BURGER', 'blueprint': {'name': '🍔 Burger', 'btnName': '🍔', 'description': 'Consumable with good hunger stats for regeneration however can give health issues. It also increases happiness but affects cleanliness.', 'type': 'FOOD', 'basePrice': '21000000000000000000', 'effects': [], 'health': -7, 'happiness': 10, 'hunger': 35, 'cleanliness': -8, 'showInShop': True}, 'computedTokenPrice': '147840000000000000000', 'computedEthOrSolanaPrice': None}, {'blueprintID': 'SALAD', 'blueprint': {'name': '🥗 Salad', 'btnName': '🥗', 'description': 'Healthy food that nourishes your PettBro with good hunger satisfaction and provides health benefits. A nutritious choice for maintaining wellness.', 'type': 'FOOD', 'basePrice': '12000000000000000000', 'effects': [], 'health': 10, 'hunger': 20, 'showInShop': True}, 'computedTokenPrice': '84480000000000000000', 'computedEthOrSolanaPrice': None}, {'blueprintID': 'STEAK', 'blueprint': {'name': '🥩 Steak', 'btnName': '🥩', 'description': 'Premium food that provides balanced nutrition with moderate hunger satisfaction, health benefits, and a slight boost to happiness. A well-rounded meal choice.', 'type': 'FOOD', 'basePrice': '12000000000000000000', 'effects': [], 'health': 5, 'happiness': 5, 'hunger': 20, 'showInShop': True}, 'computedTokenPrice': '84480000000000000000', 'computedEthOrSolanaPrice': None}, {'blueprintID': 'COOKIE', 'blueprint': {'name': '🍪 Cookie', 'btnName': '🍪', 'description': 'Sweet treat that provides light hunger satisfaction and a small energy boost. While it increases happiness, it may have minor health drawbacks due to its sugary nature.', 'type': 'FOOD', 'basePrice': '6000000000000000000', 'effects': [], 'health': -3, 'happiness': 5, 'hunger': 10, 'energy': 1, 'showInShop': True}, 'computedTokenPrice': '42240000000000000000', 'computedEthOrSolanaPrice': None}, {'blueprintID': 'PIZZA', 'blueprint': {'name': '🍕 Pizza', 'btnName': '🍕', 'description': 'Delicious food with excellent hunger satisfaction that increases happiness. However, it can cause health issues and affects cleanliness due to its greasy nature.', 'type': 'FOOD', 'basePrice': '18000000000000000000', 'effects': [], 'health': -6, 'happiness': 8, 'hunger': 30, 'cleanliness': -5, 'showInShop': True}, 'computedTokenPrice': '126720000000000000000', 'computedEthOrSolanaPrice': None}, {'blueprintID': 'SUSHI', 'blueprint': {'name': '🍣 Sushi', 'btnName': '🍣', 'description': 'Premium food that provides moderate hunger satisfaction with excellent health benefits and significantly boosts happiness. A healthy and delightful choice for your PettBro.', 'type': 'FOOD', 'basePrice': '9000000000000000000', 'effects': [], 'health': 5, 'happiness': 10, 'hunger': 15, 'showInShop': True}, 'computedTokenPrice': '63360000000000000000', 'computedEthOrSolanaPrice': None}, {'blueprintID': 'ENERGIZER', 'blueprint': {'name': '🔋 Energizer', 'btnName': '🔋', 'description': 'Potions can restore specific stats to full. This energizer potion is focused on energy restoration, providing maximum energy boost to keep your PettBro active and ready for adventures.', 'type': 'POTION', 'basePrice': '150000000000000000000', 'effects': [], 'energy': 100, 'showInShop': True}, 'computedTokenPrice': '1056000000000000000000', 'computedEthOrSolanaPrice': None}, {'blueprintID': 'SMALL_POTION', 'blueprint': {'name': '❤️ (S) Potion', 'btnName': '❤️ (S)', 'description': 'Potions can restore specific stats to full. This small potion is focused on health restoration with a minor energy boost. Perfect for healing your PettBro when health is low.', 'type': 'POTION', 'basePrice': '18000000000000000000', 'effects': [], 'health': 25, 'energy': 8, 'showInShop': True}, 'computedTokenPrice': '126720000000000000000', 'computedEthOrSolanaPrice': None}, {'blueprintID': 'LARGE_POTION', 'blueprint': {'name': '❤️ (L) Potion', 'btnName': '❤️ (L)', 'description': 'Potions can restore specific stats to full. This large potion provides significant health restoration with a minor energy boost and includes a temporary health bonus effect. Ideal for serious healing needs.', 'type': 'POTION', 'basePrice': '30000000000000000000', 'effects': [{'tag': 'BONUS_HEALTH', 'lowerBound': 10, 'upperBound': 20}], 'duration': 7200000, 'health': 50, 'energy': 5, 'showInShop': True}, 'computedTokenPrice': '211200000000000000000', 'computedEthOrSolanaPrice': None}, {'blueprintID': 'POTION', 'blueprint': {'name': '⭐ Potion', 'btnName': '⭐', 'description': 'Potions can restore specific stats to full. This ultimate potion restores all stats to maximum levels - health, happiness, hunger, energy, and cleanliness. The most comprehensive restoration potion available.', 'type': 'POTION', 'basePrice': '1050000000000000000000', 'effects': [], 'health': 100, 'happiness': 100, 'hunger': 100, 'energy': 100, 'cleanliness': 100, 'showInShop': True}, 'computedTokenPrice': '7392000000000000000000', 'computedEthOrSolanaPrice': None}, {'blueprintID': 'XP_POTION', 'blueprint': {'name': '🧪 (S) XP Boost', 'btnName': '🧪 (S)', 'description': 'Special consumables may grant unique benefits. This small XP boost potion provides a temporary experience point bonus, helping your PettBro progress faster during training and activities.', 'type': 'SPECIAL', 'ethPrice': '10000000000000000', 'effects': [{'tag': 'BONUS_XP', 'lowerBound': 0, 'upperBound': 20}], 'duration': 43200000, 'showInShop': True}, 'computedTokenPrice': None, 'computedEthOrSolanaPrice': '10000000000000000'}, {'blueprintID': 'SUPER_XP_POTION', 'blueprint': {'name': '🧪 (L) XP Boost', 'btnName': '🧪 (L)', 'description': "Special consumables may grant unique benefits. This large XP boost potion provides an extended experience point bonus with longer duration, significantly accelerating your PettBro's growth and development.", 'type': 'SPECIAL', 'ethPrice': '25000000000000000', 'effects': [{'tag': 'BONUS_XP', 'lowerBound': 0, 'upperBound': 20}], 'duration': 172800000, 'showInShop': True}, 'computedTokenPrice': None, 'computedEthOrSolanaPrice': '25000000000000000'}]}, 'nonce': '31174', 'timestamp': 1765313567750}
+2025-12-09 20:52:47,620 agent.decision_engine INFO: [DecisionEngine] Found 12 consumables in kitchen
+2025-12-09 20:52:47,621 agent.decision_engine INFO: [DecisionEngine] Found 6 food items in kitchen
+2025-12-09 20:52:47,621 agent.decision_engine INFO: [DecisionEngine] 🧠 Prompt: You are choosing ONE food blueprintID item to feed the pet.
+CURRENT_PET_STATS:
+{"petID": "80ae740c-3192-4884-9d5e-3a38343124b7", "hunger": "0", "health": "0", "hygiene": "0", "energy": "0", "happiness": "0", "xp": "140968.7", "level": 37, "xpMax": 144400, "xpMin": 0}
+
+Rules:
+- Only choose from FOOD items provided below (ignore potions/special).
+- Consider the pet's current stats when making the decision.
+- Maximize hunger increase as primary objective.
+- If there is a tie on hunger, prefer higher happiness.
+- If still tied, prefer higher (less negative) health.
+- Return ONLY the 'blueprintID' field value (the consumable blueprintID). No extra text.
+
+FOOD_ITEMS (JSON array with fields id,blueprintID,name,hunger,happiness,health):
+[{"id": "BURGER", "blueprintID": "BURGER", "name": "🍔 Burger", "hunger": 35, "happiness": 10, "health": -7}, {"id": "SALAD", "blueprintID": "SALAD", "name": "🥗 Salad", "hunger": 20, "happiness": 0, "health": 10}, {"id": "STEAK", "blueprintID": "STEAK", "name": ...
+2025-12-09 20:52:47,628 agent.pett_websocket_client INFO: 📤 Sent message type: LLM_PROXY
+2025-12-09 20:52:47,628 agent.pett_websocket_client INFO: 📤 Message content: {"type": "LLM_PROXY", "data": {"params": {"messages": [{"type": "system", "data": {"content": "You are PetDecisionEngine, an autonomous pet caretaker. Always decide the next best action given the pet's current stats and available tools. Prefer actions that improve low stats (hunger, hygiene, energy, happiness). When hunger is low, analyze provided mall JSON to determine which owned consumable increases hunger the most, then use it. If every core stat (hunger, health, hygiene, happiness) drops below 5, avoid sleeping entirely and immediately use consumables that boost hunger and health until they recover. Respond succinctly with the decided action(s) and parameters, and then execute using bound tools.", "additional_kwargs": null, "response_metadata": {}}}, {"type": "system", "data": {"content": "You are PetDecisionEngine, an autonomous pet caretaker. Always decide the next best action given the pet's current stats and available tools. Prefer actions that improve low stats (hunger, hygiene, energy, happiness). When hunger is low, analyze provided mall JSON to determine which owned consumable increases hunger the most, then use it. If every core stat (hunger, health, hygiene, happiness) drops below 5, avoid sleeping entirely and immediately use consumables that boost hunger and health until they recover. Respond succinctly with the decided action(s) and parameters, and then execute using bound tools.", "additional_kwargs": null, "response_metadata": {}, "id": "e7097e97-1597-40b3-8531-5e99cd817e4e"}}, {"type": "human", "data": {"content": "You are choosing ONE food blueprintID item to feed the pet.\nCURRENT_PET_STATS:\n{\"petID\": \"80ae740c-3192-4884-9d5e-3a38343124b7\", \"hunger\": \"0\", \"health\": \"0\", \"hygiene\": \"0\", \"energy\": \"0\", \"happiness\": \"0\", \"xp\": \"140968.7\", \"level\": 37, \"xpMax\": 144400, \"xpMin\": 0}\n\nRules:\n- Only choose from FOOD items provided below (ignore potions/special).\n- Consider the pet's current stats when making the decision.\n- Maximize hunger increase as primary objective.\n- If there is a tie on hunger, prefer higher happiness.\n- If still tied, prefer higher (less negative) health.\n- Return ONLY the 'blueprintID' field value (the consumable blueprintID). No extra text.\n\nFOOD_ITEMS (JSON array with fields id,blueprintID,name,hunger,happiness,health):\n[{\"id\": \"BURGER\", \"blueprintID\": \"BURGER\", \"name\": \"\ud83c\udf54 Burger\", \"hunger\": 35, \"happiness\": 10, \"health\": -7}, {\"id\": \"SALAD\", \"blueprintID\": \"SALAD\", \"name\": \"\ud83e\udd57 Salad\", \"hunger\": 20, \"happiness\": 0, \"health\": 10}, {\"id\": \"STEAK\", \"blueprintID\": \"STEAK\", \"name\": \"\ud83e\udd69 Steak\", \"hunger\": 20, \"happiness\": 5, \"health\": 5}, {\"id\": \"COOKIE\", \"blueprintID\": \"COOKIE\", \"name\": \"\ud83c\udf6a Cookie\", \"hunger\": 10, \"happiness\": 5, \"health\": -3}, {\"id\": \"PIZZA\", \"blueprintID\": \"PIZZA\", \"name\": \"\ud83c\udf55 Pizza\", \"hunger\": 30, \"happiness\": 8, \"health\": -6}, {\"id\": \"SUSHI\", \"blueprintID\": \"SUSHI\", \"name\": \"\ud83c\udf63 Sushi\", \"hunger\": 15, \"happiness\": 10, \"health\": 5}]\n", "additional_kwargs": null, "response_metadata": {}, "id": "b5887c58-1ba3-4a4e-a177-122fd8bab044"}}], "toolSchemas": [{"type": "function", "function": {"name": "rub_pet", "description": "Rub the pet to increase happiness and strengthen your bond.\n\n            This is one of the most basic and important pet care actions. Rubbing your pet\n            will increase their happiness level, which affects their overall well-being and\n            performance in various activities. Regular rubbing helps maintain a strong\n            emotional connection with your pet.\n\n            Returns:\n                str: Success message if the pet was rubbed successfully, error message otherwise.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "shower_pet", "description": "Give the pet a refreshing shower to clean and revitalize them.\n\n            Showering your pet is essential for maintaining their hygiene and health.\n            A clean pet is a happy pet! This action will improve your pet's cleanliness\n            status and may also provide a small boost to their overall well-being.\n            Regular showers help prevent illness and keep your pet looking their best.\n\n            Returns:\n                str: Success message if the pet was showered successfully, error message otherwise.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "sleep_pet", "description": "Put the pet to sleep to restore their energy and promote healthy rest.\n\n            Sleep is crucial for your pet's health and energy levels. When your pet sleeps,\n            they will gradually restore their energy, which is needed for various activities\n            and interactions. A well-rested pet is more active, happier, and performs better\n            in games and challenges. Make sure your pet gets adequate rest regularly.\n\n            Returns:\n                str: Success message if the pet was put to sleep successfully, error message otherwise.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "throw_ball", "description": "Throw a ball for the pet to play with and exercise.\n\n            Playing with a ball is an excellent way to keep your pet active and entertained.\n            This interactive activity helps maintain your pet's physical fitness, provides\n            mental stimulation, and strengthens the bond between you and your pet. Regular\n            play sessions contribute to your pet's overall happiness and well-being.\n\n            Returns:\n                str: Success message if the ball was thrown successfully, error message otherwise.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "use_consumable", "description": "Use a consumable item on the pet to provide various benefits.\n\n            Consumables are items that can be used to improve your pet's stats, health,\n            or provide special effects. Different consumables have different effects:\n            - Food items (BURGER, SALAD, STEAK, etc.) restore hunger and provide energy\n            - Potions (POTION, XP_POTION, etc.) provide various stat boosts and effects\n            - Special items (ENERGIZER, ACCOUNTANT, etc.) have unique beneficial effects\n\n            Args:\n                consumable_id: The ID of the consumable to use. Must be one of: \"BURGER\", \"SALAD\",\n                              \"STEAK\", \"COOKIE\", \"PIZZA\", \"SUSHI\", \"ENERGIZER\", \"POTION\", \"XP_POTION\",\n                              \"SUPER_XP_POTION\", \"SMALL_POTION\", \"LARGE_POTION\", \"REVIVE_POTION\",\n                              \"POISONOUS_ARROW\", \"REINFORCED_SHIELD\", \"BATTLE_SWORD\", \"ACCOUNTANT\"\n\n            Returns:\n                str: Success message if the consumable was used successfully, error message otherwise.", "parameters": {"properties": {"consumable_id": {"type": "string"}}, "required": ["consumable_id"], "type": "object"}}}, {"type": "function", "function": {"name": "buy_consumable", "description": "Purchase consumable items for your pet from the store.\n\n            This tool allows you to buy consumable items that can be used to care for your pet.\n            You can purchase food items, potions, and special items in various quantities.\n            Make sure you have enough currency to complete the purchase. Buying in bulk\n            can be more efficient for frequently used items.\n\n            Args:\n                consumable_id: The ID of the consumable to buy. Must be one of: \"BURGER\", \"SALAD\",\n                              \"STEAK\", \"COOKIE\", \"PIZZA\", \"SUSHI\", \"ENERGIZER\", \"POTION\", \"XP_POTION\",\n                              \"SUPER_XP_POTION\", \"SMALL_POTION\", \"LARGE_POTION\", \"REVIVE_POTION\",\n                              \"POISONOUS_ARROW\", \"REINFORCED_SHIELD\", \"BATTLE_SWORD\", \"ACCOUNTANT\"\n                amount: The number of consumables to buy (default: 1). Must be greater than 0.\n\n            Returns:\n                str: Success message if the consumable was purchased successfully, error message otherwise.", "parameters": {"properties": {"consumable_id": {"type": "string"}, "amount": {"default": 1, "type": "integer"}}, "required": ["consumable_id"], "type": "object"}}}, {"type": "function", "function": {"name": "get_consumables", "description": "Retrieve the current inventory of consumable items owned by the pet.\n\n            This tool provides a comprehensive overview of all consumable items currently\n            in your pet's inventory. The response will include food items, potions, and\n            special consumables along with their quantities. This information is essential\n            for managing your pet's resources and planning future purchases or usage.\n\n            Returns:\n                str: Success message indicating the request was sent, error message if failed.\n                     The actual inventory data will be received through the WebSocket connection.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "get_kitchen", "description": "Retrieve kitchen information and available food preparation options.\n\n            The kitchen is where you can prepare and manage food for your pet. This tool\n            provides information about available recipes, cooking options, and current\n            kitchen status. Understanding your kitchen capabilities helps you make better\n            decisions about feeding your pet and managing food resources efficiently.\n\n            Returns:\n                str: Kitchen information and available options, or error message if failed.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "get_mall", "description": "Retrieve mall information and browse available items for purchase.\n\n            The mall is your one-stop shopping destination for pet care items. This tool\n            provides access to the current mall inventory, including consumables, accessories,\n            and special items. You can view prices, availability, and item descriptions to\n            make informed purchasing decisions for your pet's needs.\n\n            Returns:\n                str: Mall information with available items and prices, or error message if failed.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "get_closet", "description": "Retrieve closet information and view available accessories and clothing.\n\n            The closet contains all the accessories and clothing items that your pet owns.\n            This tool provides an overview of your pet's wardrobe, including hats, wings,\n            toys, and other decorative items. You can see which accessories are available\n            for use and manage your pet's appearance and style options.\n\n            Returns:\n                str: Closet information with available accessories, or error message if failed.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "use_accessory", "description": "Equip an accessory on your pet to enhance their appearance and style.\n\n            Accessories are cosmetic items that make your pet look unique and stylish.\n            Different accessories include hats, wings, toys, and special items that can\n            be equipped to customize your pet's appearance. Some accessories may also\n            provide minor stat bonuses or special effects beyond just visual appeal.\n\n            Args:\n                accessory_id: The ID of the accessory to equip. Must be one of the valid\n                             accessory IDs from the available collection including crowns,\n                             hats, wings, toys, and other decorative items.\n\n            Returns:\n                str: Success message if the accessory was equipped successfully, error message otherwise.", "parameters": {"properties": {"accessory_id": {"type": "string"}}, "required": ["accessory_id"], "type": "object"}}}, {"type": "function", "function": {"name": "buy_accessory", "description": "Purchase an accessory for your pet from the store.\n\n            This tool allows you to buy accessories that can be used to customize your\n            pet's appearance. Accessories range from simple hats and crowns to elaborate\n            wings and special themed items. Each accessory has its own price and may\n            have limited availability. Building a diverse accessory collection allows\n            for greater customization options.\n\n            Args:\n                accessory_id: The ID of the accessory to purchase. Must be one of the valid\n                             accessory IDs from the store's available collection.\n\n            Returns:\n                str: Success message if the accessory was purchased successfully, error message otherwise.", "parameters": {"properties": {"accessory_id": {"type": "string"}}, "required": ["accessory_id"], "type": "object"}}}, {"type": "function", "function": {"name": "ai_search", "description": "Perform an AI-powered web search to find information on any topic.\n\n            This powerful tool leverages artificial intelligence to search the web and\n            provide relevant, up-to-date information on virtually any topic. The AI\n            search can help answer questions, find facts, research topics, and provide\n            insights that can be useful for pet care or general knowledge. The search\n            process may take up to 30 seconds to complete as it thoroughly analyzes\n            web content to provide the most relevant results.\n\n            Args:\n                prompt: The search query or question to research. Be specific and clear\n                       for the best results. Examples: \"best food for virtual pets\",\n                       \"how to increase pet happiness\", \"latest pet care trends\"\n\n            Returns:\n                str: Search results with relevant information, or error message if the search failed.", "parameters": {"properties": {"prompt": {"type": "string"}}, "required": ["prompt"], "type": "object"}}}, {"type": "function", "function": {"name": "get_personality", "description": "Retrieve detailed personality information and traits of your pet.\n\n            Every pet has a unique personality that affects their behavior, preferences,\n            and interactions. This tool provides insights into your pet's personality\n            traits, behavioral patterns, and characteristics. Understanding your pet's\n            personality helps you make better care decisions and build a stronger\n            relationship with them.\n\n            Returns:\n                str: Success message indicating the request was sent, error message if failed.\n                     The personality data will be received through the WebSocket connection.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "generate_image", "description": "Generate a custom image using AI based on your description.\n\n            This creative tool uses artificial intelligence to generate unique images\n            based on your text description. You can create artwork, scenes, or any\n            visual content by describing what you want to see. The AI will interpret\n            your prompt and create an original image. This is perfect for creating\n            custom artwork related to your pet or any other creative project.\n\n            Args:\n                prompt: A detailed description of the image you want to generate.\n                       Be specific about colors, style, objects, and composition for\n                       better results. Example: \"a cute cartoon pet playing in a garden\"\n\n            Returns:\n                str: Success message indicating image generation started, error message if failed.\n                     The generated image will be delivered through the WebSocket connection.", "parameters": {"properties": {"prompt": {"type": "string"}}, "required": ["prompt"], "type": "object"}}}, {"type": "function", "function": {"name": "hotel_check_in", "description": "Check your pet into the hotel for premium care and services.\n\n            The hotel provides luxury accommodations and premium care services for your pet.\n            When checked in, your pet will receive enhanced care, better rest quality, and\n            access to exclusive hotel amenities. This is perfect for when you want to give\n            your pet a special treat or when they need extra attention and care.\n\n            Returns:\n                str: Success message if check-in was successful, error message otherwise.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "hotel_check_out", "description": "Check your pet out of the hotel after their stay.\n\n            Use this tool to check your pet out of the hotel when their stay is complete.\n            Your pet will return from their luxury hotel experience refreshed and happy.\n            Make sure to check them out when you're ready to resume normal pet care\n            activities and interactions.\n\n            Returns:\n                str: Success message if check-out was successful, error message otherwise.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "buy_hotel", "description": "Purchase a hotel tier upgrade for enhanced accommodations.\n\n            Hotel tiers represent different levels of luxury and service quality available\n            at the pet hotel. Higher tiers provide better amenities, more comfortable\n            accommodations, and premium services for your pet. Investing in better hotel\n            tiers ensures your pet receives the best possible care during their stays.\n\n            Args:\n                tier: The hotel tier to purchase. Different tiers offer varying levels\n                     of luxury and services. Check available tiers and their benefits\n                     before making a purchase decision.\n\n            Returns:\n                str: Success message if the hotel tier was purchased successfully, error message otherwise.", "parameters": {"properties": {"tier": {"type": "string"}}, "required": ["tier"], "type": "object"}}}, {"type": "function", "function": {"name": "get_office", "description": "Get office information and current status.\n\n            Retrieves information about the office environment, which may include\n            work-related activities, office upgrades, or administrative details\n            related to pet management.\n\n            Returns:\n                str: Success message with office information request confirmation, or error message.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "get_pet_status", "description": "Get the current status and statistics of the pet.\n\n            Retrieves comprehensive information about the pet's current state,\n            including health, happiness, energy levels, and other vital statistics.\n            This is useful for monitoring your pet's well-being and making informed\n            care decisions.\n\n            Returns:\n                str: Formatted pet status information, or error message if retrieval fails.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "random_action", "description": "Perform a random action with the pet for spontaneous interaction.\n\n            Selects and executes a random pet care action from available options.\n            This adds variety and spontaneity to pet interactions, helping to keep\n            your pet engaged and entertained with different activities.\n\n            Returns:\n                str: Description of the random action performed and its result.", "parameters": {"properties": {}, "type": "object"}}}, {"type": "function", "function": {"name": "get_available_tools", "description": "Get a comprehensive list of all available pet care tools and their descriptions.\n\n            Provides an overview of all tools available for pet care and interaction.\n            This is helpful for understanding what actions can be performed with your pet\n            and planning care activities.\n\n            Returns:\n                str: Comma-separated list of available tool names.", "parameters": {"properties": {}, "type": "object"}}}], "stop": null, "temperature": null, "model": null, "maxOutputTokens": null, "metadata": {"component": "pet_decision_engine", "source": "agent_llm_proxy"}}}, "nonce": "25909"}
+2025-12-09 20:52:47,697 agent.pett_websocket_client ERROR: Server error: Invalid value for message type. It does not exist: LLM_PROXY
+2025-12-09 20:52:52,080 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-09 20:52:55,925 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-09 20:52:55,970 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-09 20:52:55,970 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-09 20:52:55,971 pett_agent INFO: 🛑 Web server stopped
+2025-12-09 20:52:55,971 pett_agent INFO: ✅ Pett Agent shutdown complete

@@ -2,10 +2,10 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Callable
 
-from langchain.chat_models import init_chat_model
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 
+from .backend_chat_model import BackendChatModel
 from .pett_websocket_client import PettWebSocketClient
 from .pett_tools import PettTools
 
@@ -15,7 +15,12 @@ logger = logging.getLogger(__name__)
 class PetDecisionEngine:
     """Centralizes model, tools binding, and AI-driven decisions for the pet."""
 
-    def __init__(self, websocket_client: PettWebSocketClient):
+    def __init__(
+        self,
+        websocket_client: PettWebSocketClient,
+        *,
+        chat_model: Optional[Any] = None,
+    ):
         self.websocket_client = websocket_client
         self.pett_tools = PettTools(self.websocket_client)
         # Optional prompt recorder: (kind, prompt, context)
@@ -24,7 +29,10 @@ class PetDecisionEngine:
         ] = None
 
         # Initialize model, memory, tools and agent once
-        self.model = init_chat_model("gpt-4o", model_provider="openai")
+        self.model = chat_model or BackendChatModel(
+            self.websocket_client,
+            request_metadata={"component": "pet_decision_engine"},
+        )
         self.memory = MemorySaver()
         self.tools = self.pett_tools.create_tools()
         self.bound_model = self.model.bind_tools(self.tools)  # type: ignore

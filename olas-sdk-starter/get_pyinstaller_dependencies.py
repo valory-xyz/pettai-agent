@@ -15,6 +15,7 @@ def main() -> None:
         "agent.telegram_bot",
         "agent.pett_tools",
         "agent.pett_websocket_client",
+        "agent.backend_chat_model",
         "agent.daily_action_tracker",
         "agent.staking_checkpoint",
         "agent.action_recorder",
@@ -27,6 +28,9 @@ def main() -> None:
         "jaraco.functools",
         "jaraco.collections",
         "jaraco.context",
+        # jaraco.context imports backports.tarfile at runtime
+        "backports",
+        "backports.tarfile",
         # Pydantic runtime imports requested via import_string (see above)
         "pydantic.deprecated.decorator",
     ]

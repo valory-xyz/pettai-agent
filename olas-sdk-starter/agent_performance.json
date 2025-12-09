@@ -1,5 +1,5 @@
 {
-  "timestamp": 1765206208,
+  "timestamp": 1765313575,
   "metrics": [
     {
       "name": "Pet Name",
@@ -11,7 +11,7 @@
       "name": "Pet Status",
       "is_primary": false,
       "description": "Reports whether the pet is alive or dead.",
-      "value": "dead"
+      "value": "alive"
     }
   ],
   "agent_behavior": "Make sure to login to your favourite pet through the Agent Profile to enable autonomous pet sitting actions!"

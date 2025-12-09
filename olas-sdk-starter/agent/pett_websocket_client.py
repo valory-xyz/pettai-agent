@@ -1356,6 +1356,40 @@ class PettWebSocketClient:
             # Clean up the future
             self.ai_search_future = None
 
+    async def proxy_llm_completion(
+        self,
+        params: Dict[str, Any],
+        *,
+        timeout: int = 45,
+    ) -> Optional[Dict[str, Any]]:
+        """Proxy a LangChain chat completion via the backend WebSocket."""
+        messages = params.get("messages")
+        if not isinstance(messages, list) or not messages:
+            logger.error("LLM proxy requires a non-empty 'messages' list")
+            return None
+
+        metadata = params.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        metadata.setdefault("source", "agent_llm_proxy")
+        params["metadata"] = metadata
+
+        success, response = await self._send_and_wait(
+            "LLM_PROXY",
+            {"params": params},
+            timeout=timeout,
+        )
+        if not success:
+            logger.error("LLM proxy request failed: %s", self._last_action_error)
+            return None
+
+        if isinstance(response, dict):
+            data = response.get("data")
+            if isinstance(data, dict):
+                return data
+            return response
+        return None
+
     async def get_personality(self) -> bool:
         """Get pet personality information."""
         logger.info("[TOOL] Getting pet personality information")

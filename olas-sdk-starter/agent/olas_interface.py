@@ -1507,7 +1507,8 @@ class OlasInterface:
                     )
 
             except Exception as e:
-                self.logger.error(f"❌ Error handling login: {e}")
+                print(f"❌ Error handling login: {str(e)!s}")
+                self.logger.error(f"❌ Error handling login: {str(e)!s}")
                 return web.json_response({"error": str(e)}, status=500)
 
         return web.json_response({"error": "Method not allowed"}, status=405)

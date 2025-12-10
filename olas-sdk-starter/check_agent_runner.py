@@ -9,9 +9,16 @@ import sys
 from typing import Tuple
 
 
+def _default_check_command() -> str:
+    """Return platform-specific default command to check the binary."""
+    suffix = ".exe" if os.name == "nt" else ""
+    prefix = "" if os.name == "nt" else "./"
+    return f"{prefix}dist/agent_runner_bin{suffix} --version"
+
+
 def _read_config() -> Tuple[str, int, str]:
     """Read command configuration from the environment."""
-    command = os.environ.get("CHECK_COMMAND", "./dist/agent_runner_bin --version")
+    command = os.environ.get("CHECK_COMMAND", _default_check_command())
     timeout = int(os.environ.get("CHECK_TIMEOUT", "30"))
     search = os.environ.get("CHECK_SEARCH_STRING", "Pett Agent Runner")
     return command, timeout, search

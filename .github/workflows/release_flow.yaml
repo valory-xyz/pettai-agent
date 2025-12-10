@@ -26,7 +26,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - name: Push Autonomous Packages # push the agent/service packages to the remote registry
+      - name: Push Autonomous Packages # push the agent/service packages to the remote registry in OLAS
         uses: addnab/docker-run-action@v3
         with:
           image: valory/open-autonomy-user:0.19.11
@@ -120,7 +120,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-13, macos-14]
+        os: [windows-latest, macos-15, macos-14]
     defaults:
       run:
         shell: bash
@@ -168,6 +168,9 @@ jobs:
           make install-deps
           make hash_id
           make agent_id
+      - name: Ensure backports.tarfile is installed for PyInstaller, needed in github actions
+        run: |
+          python -m pip install --upgrade "backports.tarfile>=1.2.0"
       - name: Setup frontend environment # create .env file with Privy App ID from secrets
         working-directory: ./olas-sdk-starter/frontend
         run: |
@@ -178,7 +181,7 @@ jobs:
         run: |
           make agent.zip
           make agent.tar.gz
-      - name: Build and sign macOS binary # runs PyInstaller and codesigns output
+      - name: Build and sign macOS binary # runs PyInstaller and codesigns output, needs changing from the OLAS team
         if: runner.os != 'Windows'
         env:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}

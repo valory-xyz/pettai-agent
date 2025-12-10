@@ -5,6 +5,8 @@ aiohttp>=3.8.0
 Brotli>=1.0.9  # Required for Brotli decompression in aiohttp proxy
 asyncio-mqtt>=0.16.0
 python-dotenv>=1.0.0
+# Needed so PyInstaller bundles setuptools' jaraco.context dependency on Windows
+backports.tarfile>=1.2.0 ; python_version < "3.12"
 
 # WebSocket support
 websockets>=15.0.0

@@ -16,6 +16,11 @@ try:  # LangChain 0.3 exposes pydantic_v1; older installs only ship pydantic.Fie
 except ImportError:  # pragma: no cover - fallback for environments without the shim
     from pydantic import Field  # type: ignore
 
+try:  # Prefer Pydantic v2 config API when available
+    from pydantic import ConfigDict  # type: ignore
+except (ImportError, AttributeError):  # pragma: no cover - Pydantic v1 fallback
+    ConfigDict = None  # type: ignore
+
 from .pett_websocket_client import PettWebSocketClient
 
 logger = logging.getLogger(__name__)
@@ -29,9 +34,12 @@ class BackendChatModel(BaseChatModel):
     timeout: int = 45
     request_metadata: Dict[str, Any] = Field(default_factory=dict)
 
-    class Config:
-        arbitrary_types_allowed = True
-        extra = "allow"
+    if ConfigDict:  # pragma: no branch - simple compatibility shim
+        model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
+    else:  # pragma: no cover - only hit on legacy Pydantic v1 installs
+        class Config:  # type: ignore[misc, valid-type]
+            arbitrary_types_allowed = True
+            extra = "allow"
 
     def __init__(
         self,

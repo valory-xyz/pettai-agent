@@ -1778,6 +1778,10 @@ class OlasInterface:
                 # Serve React routes (SPA fallback to index.html)
                 self.app.router.add_get("/login", self._serve_react_app)
                 self.app.router.add_get("/login/{tail:.*}", self._serve_react_app)
+                self.app.router.add_get("/privy-login", self._serve_react_app)
+                self.app.router.add_get(
+                    "/privy-login/{tail:.*}", self._serve_react_app
+                )
                 self.app.router.add_get("/dashboard", self._serve_react_app)
                 self.app.router.add_get("/dashboard/{tail:.*}", self._serve_react_app)
                 self.app.router.add_get("/action-history", self._serve_react_app)

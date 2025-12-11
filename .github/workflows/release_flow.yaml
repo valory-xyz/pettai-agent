@@ -234,6 +234,7 @@ jobs:
         with:
           name: ${{ env.FILENAME }}
           path: olas-sdk-starter/dist/${{ env.FILENAME }}
+          overwrite: true
       - name: Upload hash_id artifact
         uses: actions/upload-artifact@v4
         with:

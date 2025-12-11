@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect } from 'react';
 import {
   BrowserRouter,
   Routes,
@@ -12,6 +12,7 @@ import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
 import AllSet from './pages/AllSet';
 import ActionHistory from './pages/ActionHistory';
+import PrivyLoginPopup from './pages/PrivyLoginPopup';
 import './assets/styles/core.scss';
 import './assets/styles/toast.scss';
 import './assets/styles/tutorial.scss';
@@ -64,21 +65,55 @@ const RouterWithAuth = () => {
   );
 };
 
-// Main app router with loading states
-const AppRouter = () => {
-  const routingComponent = useMemo(
-    () => (
-      <div className="App-content">
-        <BrowserRouter>
-          <RouterWithAuth />
-        </BrowserRouter>
-      </div>
-    ),
-    []
-  );
+const ConfigurationError = () => (
+  <div className="App">
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        minHeight: '100vh',
+        flexDirection: 'column',
+        gap: '1rem',
+        padding: '2rem',
+        textAlign: 'center',
+      }}
+    >
+      <h1 style={{ color: '#ef4444', fontSize: '1.5rem', fontWeight: 'bold' }}>
+        Configuration Error
+      </h1>
+      <p style={{ color: '#6b7280' }}>
+        REACT_APP_PRIVY_APP_ID environment variable is not set. Please configure
+        it in your environment.
+      </p>
+    </div>
+  </div>
+);
 
-  return routingComponent;
-};
+const MainAppShell = () => (
+  <div className="App">
+    <div className="App-content">
+      <AuthProvider>
+        <RouterWithAuth />
+      </AuthProvider>
+    </div>
+  </div>
+);
+
+const PrivyLoginRoute = ({ appId }) => (
+  <PrivyProvider
+    appId={appId}
+    config={{
+      loginMethods: ['email'],
+      appearance: {
+        theme: 'light',
+        accentColor: '#4A90E2',
+      },
+    }}
+  >
+    <PrivyLoginPopup />
+  </PrivyProvider>
+);
 
 // Main App component
 function App() {
@@ -88,51 +123,19 @@ function App() {
     console.error(
       '[App] REACT_APP_PRIVY_APP_ID environment variable is required'
     );
-    return (
-      <div className="App">
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            minHeight: '100vh',
-            flexDirection: 'column',
-            gap: '1rem',
-            padding: '2rem',
-            textAlign: 'center',
-          }}
-        >
-          <h1
-            style={{ color: '#ef4444', fontSize: '1.5rem', fontWeight: 'bold' }}
-          >
-            Configuration Error
-          </h1>
-          <p style={{ color: '#6b7280' }}>
-            REACT_APP_PRIVY_APP_ID environment variable is not set. Please
-            configure it in your environment.
-          </p>
-        </div>
-      </div>
-    );
+    return <ConfigurationError />;
   }
 
   return (
-    <div className="App">
-      <PrivyProvider
-        appId={privyAppId}
-        config={{
-          loginMethods: ['email', 'wallet'],
-          appearance: {
-            theme: 'light',
-            accentColor: '#4A90E2',
-          },
-        }}
-      >
-        <AuthProvider>
-          <AppRouter />
-        </AuthProvider>
-      </PrivyProvider>
-    </div>
+    <BrowserRouter>
+      <Routes>
+        <Route
+          path="/privy-login"
+          element={<PrivyLoginRoute appId={privyAppId} />}
+        />
+        <Route path="/*" element={<MainAppShell />} />
+      </Routes>
+    </BrowserRouter>
   );
 }
 

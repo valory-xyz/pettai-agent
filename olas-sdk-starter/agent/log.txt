@@ -363,3 +363,545 @@ FOOD_ITEMS (JSON array with fields id,blueprintID,name,hunger,happiness,health):
 2025-12-09 20:52:55,970 pett_agent INFO: 🔌 WebSocket disconnected
 2025-12-09 20:52:55,971 pett_agent INFO: 🛑 Web server stopped
 2025-12-09 20:52:55,971 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-10 21:00:27,463 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:00:27,464 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:00:27,464 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:00:27,464 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:00:27,475 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:00:27,855 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:00:29,168 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:00:29,168 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:00:29,169 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:00:29,169 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:00:29,169 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:00:29,169 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:00:29,471 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:00:29,471 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:00:29,471 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:00:29,475 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:00:29,476 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:00:29,476 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:00:29,476 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:00:29,479 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-10 21:00:29,479 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-10 21:00:29,479 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-10 21:00:29,479 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-10 21:00:29,479 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-10 21:00:29,479 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-10 21:00:29,479 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-10 21:00:29,479 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-10 21:00:29,479 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-10 21:00:29,479 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-10 21:00:33,731 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765356681)
+2025-12-10 21:00:34,229 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-10 21:00:42,607 pett_agent INFO: 🔐 Received login request from React frontend
+2025-12-10 21:00:42,608 pett_agent INFO: 🔐 Updating Privy token and refreshing WebSocket connection
+2025-12-10 21:00:42,609 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:00:42,609 agent.pett_websocket_client INFO: 🆕 Using environment auth token for connection
+2025-12-10 21:00:42,609 agent.pett_websocket_client INFO: 🔄 Connection attempt 1/3
+2025-12-10 21:00:42,609 agent.pett_websocket_client INFO: 🔌 Connecting to WebSocket: wss://ws.pett.ai
+2025-12-10 21:00:42,842 agent.pett_websocket_client INFO: ✅ WebSocket connection established
+2025-12-10 21:00:42,842 agent.pett_websocket_client INFO: ✅ WebSocket connected, starting message listener...
+2025-12-10 21:00:42,843 agent.pett_websocket_client INFO: 👂 Started WebSocket message listener
+2025-12-10 21:00:42,843 agent.pett_websocket_client INFO: 🔐 Attempting authentication...
+2025-12-10 21:00:42,844 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:00:42,844 agent.pett_websocket_client INFO: 👂 Starting WebSocket message listener...
+2025-12-10 21:00:42,919 agent.pett_websocket_client INFO: ✅ Connection and authentication successful!
+2025-12-10 21:00:43,023 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:00:44,235 pett_agent INFO: 😴 Low energy detected; initiating sleep
+2025-12-10 21:00:44,236 agent.pett_websocket_client INFO: 📤 Sent message type: SLEEP
+2025-12-10 21:00:44,236 agent.pett_websocket_client INFO: 📤 Message content: {"type": "SLEEP", "data": {}, "nonce": "46056", "verify": true}
+2025-12-10 21:00:44,430 agent.pett_websocket_client INFO: Pet Status updated (merged partial update)
+2025-12-10 21:00:44,430 agent.pett_websocket_client INFO: Updated pet data: {'id': '80ae740c-3192-4884-9d5e-3a38343124b7', 'name': 'CrazyDev23', 'userID': '491301d8-d495-4d26-97c8-3b1c9ec9c42e', 'sleeping': True, 'dead': False, 'god': False, 'active': True, 'currentHotelTier': 0, 'hasSeasonPass': False, 'seasonPassPurchaseDate': None, 'deathAt': '2025-12-13T00:24:23.235Z', 'PetTokens': {'petID': '80ae740c-3192-4884-9d5e-3a38343124b7', 'tokens': '1113305000007000000000', 'ethTokens': '10572249999998000', 'solanaTokens': '0', 'stars': '0', 'useSolana': False, 'depositedTokens': '0'}, 'PetStats': {'petID': '80ae740c-3192-4884-9d5e-3a38343124b7', 'hunger': '6.42', 'health': '0', 'hygiene': '0', 'energy': '0', 'happiness': '0', 'xp': '141007.2', 'level': 37, 'xpMax': 144400, 'xpMin': 1}}
+2025-12-10 21:00:44,430 agent.pett_websocket_client INFO: 📊 Received data message
+2025-12-10 21:00:44,431 agent.pett_websocket_client INFO: Data message: {'type': 'data', 'data': {'verification': {'hash': '0xbbf078f484617ac1436f6488d359e40762d6fcf6d1ac397e1898be8e812012ee', 'signature': {'v': 27, 'r': '0xa47a29e6204eb16c310c2003294258d579b2c9aa76fde3755968413d51c8eea9', 's': '0x564f7da741925b5838dd089d36d34a1a84066f7e6f8335617d99ec36ff4c12f1'}, 'message': {'action': 5, 'actionName': 'SLEEP', 'timestamp': '1765400444', 'nonce': '0xdbb2b6ae698fc17c044329fc7cc05dfd0ce3933194df31114b1b8c00bb830d61'}, 'issuedAt': '2025-12-10T21:00:44.000Z', 'reason': 'socket-request'}}, 'nonce': '46056', 'timestamp': 1765400444493}
+2025-12-10 21:00:44,431 agent.pett_websocket_client INFO: ✅ SLEEP action confirmed by server
+2025-12-10 21:00:44,431 agent.pett_websocket_client INFO: 📗 Submitting verified SLEEP action on-chain
+2025-12-10 21:00:44,431 agent.pett_websocket_client INFO: 🧾 Skipping on-chain record for SLEEP: action recorder disabled (missing key/RPC)
+2025-12-10 21:00:44,432 pett_agent WARNING: Staking KPI snapshot unavailable for SLEEP: checkpoint client is running in checkpoint-only mode; staking KPIs unavailable
+2025-12-10 21:00:44,433 pett_agent INFO: 📋 Action SLEEP recorded (1/8 today (local tracker), 7 remaining) — pending staking KPIs
+2025-12-10 21:00:48,020 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:00:55,071 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-10 21:00:55,117 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:00:55,117 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-10 21:00:55,118 pett_agent INFO: 🛑 Web server stopped
+2025-12-10 21:00:55,118 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-10 21:14:02,977 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:14:02,978 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:14:02,978 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:14:02,978 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:14:02,991 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:14:03,324 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:14:04,735 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:14:04,735 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:14:04,735 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:14:04,735 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:14:04,736 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:14:04,736 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:14:04,975 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:14:04,976 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:14:04,976 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:14:04,978 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:14:04,978 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:14:04,978 pett_agent INFO: 🔨 React build not found, attempting to build from Python...
+2025-12-10 21:14:04,997 pett_agent INFO: 🏗️ Building React app with yarn...
+2025-12-10 21:14:07,103 pett_agent ERROR: ❌ React build failed: npm warn Unknown env config "version-git-tag". This will stop working in the next major version of npm.
+npm warn Unknown env config "argv". This will stop working in the next major version of npm.
+npm warn Unknown env config "version-commit-hooks". This will stop working in the next major version of npm.
+npm warn Unknown env config "version-git-message". This will stop working in the next major version of npm.
+npm warn Unknown env config "version-tag-prefix". This will stop working in the next major version of npm.
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+error Command failed with exit code 1.
+
+2025-12-10 21:14:07,104 pett_agent WARNING: ⚠️ React build missing at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build. Will attempt to build or fallback to healthcheck on root.
+2025-12-10 21:14:07,104 pett_agent ERROR: Failed to start web server: [Errno 48] error while attempting to bind on address ('0.0.0.0', 8716): address already in use
+2025-12-10 21:14:07,104 pett_agent ERROR: ❌ Failed to initialize Pett Agent: [Errno 48] error while attempting to bind on address ('0.0.0.0', 8716): address already in use
+2025-12-10 21:14:07,105 pett_agent ERROR: ❌ Failed to initialize agent
+2025-12-10 21:14:38,695 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:14:38,696 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:14:38,696 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:14:38,696 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:14:38,706 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:14:39,045 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:14:41,771 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:14:41,772 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:14:41,772 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:14:41,772 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:14:41,773 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:14:41,773 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:14:42,066 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:14:42,066 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:14:42,066 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:14:42,069 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:14:42,070 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:14:42,070 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:14:42,070 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:14:42,072 pett_agent ERROR: Failed to start web server: [Errno 48] error while attempting to bind on address ('0.0.0.0', 8716): address already in use
+2025-12-10 21:14:42,072 pett_agent ERROR: ❌ Failed to initialize Pett Agent: [Errno 48] error while attempting to bind on address ('0.0.0.0', 8716): address already in use
+2025-12-10 21:14:42,072 pett_agent ERROR: ❌ Failed to initialize agent
+2025-12-10 21:14:59,672 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:14:59,673 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:14:59,673 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:14:59,673 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:14:59,678 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:15:00,128 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:15:01,520 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:15:01,520 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:15:01,520 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:15:01,521 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:15:01,522 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:15:01,522 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:15:01,981 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:15:01,982 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:15:01,982 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:15:01,983 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:15:01,984 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:15:01,984 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:15:01,984 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:15:01,986 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-10 21:15:01,986 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-10 21:15:01,986 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-10 21:15:01,986 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-10 21:15:01,986 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-10 21:15:01,986 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-10 21:15:01,986 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-10 21:15:01,986 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-10 21:15:01,986 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-10 21:15:01,986 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-10 21:15:07,294 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765357593)
+2025-12-10 21:15:07,516 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-10 21:17:27,344 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-10 21:17:27,344 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:17:27,344 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-10 21:17:27,345 pett_agent INFO: 🛑 Web server stopped
+2025-12-10 21:17:27,346 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-10 21:17:36,113 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:17:36,113 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:17:36,113 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:17:36,113 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:17:36,119 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:17:36,573 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:17:38,723 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:17:38,723 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:17:38,723 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:17:38,724 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:17:38,724 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:17:38,724 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:17:39,559 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:17:39,560 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:17:39,560 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:17:39,561 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:17:39,561 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:17:39,562 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:17:39,562 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:17:39,565 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-10 21:17:39,565 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-10 21:17:39,565 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-10 21:17:39,565 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-10 21:17:39,565 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-10 21:17:39,566 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-10 21:17:39,566 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-10 21:17:39,566 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-10 21:17:39,566 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-10 21:17:39,566 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-10 21:17:44,174 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765357749)
+2025-12-10 21:17:44,426 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-10 21:17:47,400 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-10 21:17:47,400 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:17:47,400 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-10 21:17:47,400 pett_agent INFO: 🛑 Web server stopped
+2025-12-10 21:17:47,400 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-10 21:17:49,148 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:17:49,149 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:17:49,149 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:17:49,149 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:17:49,154 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:17:49,519 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:17:51,551 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:17:51,551 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:17:51,552 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:17:51,552 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:17:51,552 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:17:51,553 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:17:51,746 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:17:51,746 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:17:51,746 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:17:51,748 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:17:51,749 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:17:51,749 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:17:51,750 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:17:51,754 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-10 21:17:51,754 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-10 21:17:51,754 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-10 21:17:51,754 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-10 21:17:51,754 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-10 21:17:51,754 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-10 21:17:51,755 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-10 21:17:51,755 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-10 21:17:51,755 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-10 21:17:51,755 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-10 21:17:55,853 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765357761)
+2025-12-10 21:17:56,125 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-10 21:17:56,898 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-10 21:17:56,898 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:17:56,899 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-10 21:17:56,901 pett_agent INFO: 🛑 Web server stopped
+2025-12-10 21:17:56,901 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-10 21:18:11,247 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:18:11,248 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:18:11,248 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:18:11,248 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:18:11,253 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:18:11,546 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:18:12,469 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:18:12,470 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:18:12,470 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:18:12,470 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:18:12,471 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:18:12,471 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:18:12,735 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:18:12,735 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:18:12,735 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:18:12,736 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:18:12,736 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:18:12,737 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:18:12,737 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:18:12,739 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-10 21:18:12,739 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-10 21:18:12,739 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-10 21:18:12,739 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-10 21:18:12,739 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-10 21:18:12,739 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-10 21:18:12,740 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-10 21:18:12,740 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-10 21:18:12,740 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-10 21:18:12,740 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-10 21:18:15,415 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765357785)
+2025-12-10 21:18:15,817 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-10 21:18:17,276 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-10 21:18:17,276 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:18:17,277 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-10 21:18:17,277 pett_agent INFO: 🛑 Web server stopped
+2025-12-10 21:18:17,277 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-10 21:18:24,739 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:18:24,739 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:18:24,739 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:18:24,739 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:18:24,745 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:18:25,321 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:18:27,781 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:18:27,782 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:18:27,782 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:18:27,782 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:18:27,783 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:18:27,783 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:18:28,030 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:18:28,031 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:18:28,031 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:18:28,033 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:18:28,034 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:18:28,034 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:18:28,035 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:18:28,037 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-10 21:18:28,037 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-10 21:18:28,037 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-10 21:18:28,037 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-10 21:18:28,038 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-10 21:18:28,038 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-10 21:18:28,038 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-10 21:18:28,038 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-10 21:18:28,038 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-10 21:18:28,038 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-10 21:18:31,407 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765357797)
+2025-12-10 21:18:31,601 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-10 21:19:40,210 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-10 21:19:40,211 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:19:40,211 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-10 21:19:40,213 pett_agent INFO: 🛑 Web server stopped
+2025-12-10 21:19:40,214 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-10 21:19:41,631 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:19:41,631 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:19:41,631 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:19:41,631 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:19:41,637 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:19:42,141 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:19:43,809 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:19:43,809 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:19:43,809 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:19:43,810 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:19:43,810 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:19:43,811 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:19:44,065 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:19:44,065 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:19:44,065 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:19:44,068 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:19:44,068 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:19:44,068 pett_agent INFO: 🔨 React build not found, attempting to build from Python...
+2025-12-10 21:19:44,083 pett_agent INFO: 🏗️ Building React app with yarn...
+2025-12-10 21:20:01,683 pett_agent INFO: ✅ React app built successfully
+2025-12-10 21:20:01,684 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:20:01,687 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-10 21:20:01,687 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-10 21:20:01,687 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-10 21:20:01,687 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-10 21:20:01,687 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-10 21:20:01,687 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-10 21:20:01,687 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-10 21:20:01,687 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-10 21:20:01,687 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-10 21:20:01,687 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-10 21:20:06,612 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765357893)
+2025-12-10 21:20:07,841 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-10 21:20:53,054 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-10 21:20:53,055 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:20:53,055 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-10 21:20:53,057 pett_agent INFO: 🛑 Web server stopped
+2025-12-10 21:20:53,057 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-10 21:20:54,250 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:20:54,250 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:20:54,250 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:20:54,250 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:20:54,255 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:20:54,600 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:20:57,090 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:20:57,090 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:20:57,090 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:20:57,091 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:20:57,092 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:20:57,092 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:20:57,382 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:20:57,383 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:20:57,383 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:20:57,384 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:20:57,385 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:20:57,385 pett_agent INFO: 🔨 React build not found, attempting to build from Python...
+2025-12-10 21:20:57,398 pett_agent INFO: 🏗️ Building React app with yarn...
+2025-12-10 21:21:14,711 pett_agent INFO: ✅ React app built successfully
+2025-12-10 21:21:14,711 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:21:14,713 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-10 21:21:14,713 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-10 21:21:14,713 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-10 21:21:14,713 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-10 21:21:14,713 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-10 21:21:14,713 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-10 21:21:14,714 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-10 21:21:14,714 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-10 21:21:14,714 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-10 21:21:14,714 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-10 21:21:17,438 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765357965)
+2025-12-10 21:21:17,986 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-10 21:22:47,969 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-10 21:22:47,970 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:22:47,971 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-10 21:22:47,972 pett_agent INFO: 🛑 Web server stopped
+2025-12-10 21:22:47,972 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-10 21:22:58,916 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:22:58,916 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:22:58,916 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:22:58,916 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:22:58,921 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:22:59,772 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:23:02,027 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:23:02,028 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:23:02,028 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:23:02,028 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:23:02,029 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:23:02,029 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:23:02,268 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:23:02,268 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:23:02,269 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:23:02,270 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:23:02,270 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:23:02,271 pett_agent INFO: 🔨 React build not found, attempting to build from Python...
+2025-12-10 21:23:02,284 pett_agent INFO: 🏗️ Building React app with yarn...
+2025-12-10 21:23:19,628 pett_agent INFO: ✅ React app built successfully
+2025-12-10 21:23:19,628 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:23:19,631 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-10 21:23:19,631 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-10 21:23:19,631 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-10 21:23:19,631 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-10 21:23:19,631 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-10 21:23:19,631 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-10 21:23:19,631 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-10 21:23:19,631 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-10 21:23:19,631 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-10 21:23:19,631 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-10 21:23:25,190 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765358097)
+2025-12-10 21:23:26,247 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-10 21:23:46,581 pett_agent INFO: 🔐 Received login request from React frontend
+2025-12-10 21:23:46,581 pett_agent INFO: 🔐 Updating Privy token and refreshing WebSocket connection
+2025-12-10 21:23:46,582 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:23:46,582 agent.pett_websocket_client INFO: 🆕 Using environment auth token for connection
+2025-12-10 21:23:46,582 agent.pett_websocket_client INFO: 🔄 Connection attempt 1/3
+2025-12-10 21:23:46,582 agent.pett_websocket_client INFO: 🔌 Connecting to WebSocket: wss://ws.pett.ai
+2025-12-10 21:23:46,712 agent.pett_websocket_client INFO: ✅ WebSocket connection established
+2025-12-10 21:23:46,712 agent.pett_websocket_client INFO: ✅ WebSocket connected, starting message listener...
+2025-12-10 21:23:46,712 agent.pett_websocket_client INFO: 👂 Started WebSocket message listener
+2025-12-10 21:23:46,712 agent.pett_websocket_client INFO: 🔐 Attempting authentication...
+2025-12-10 21:23:46,713 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:23:46,713 agent.pett_websocket_client INFO: 👂 Starting WebSocket message listener...
+2025-12-10 21:23:46,787 agent.pett_websocket_client INFO: ✅ Connection and authentication successful!
+2025-12-10 21:23:46,887 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:23:51,257 pett_agent INFO: 🛌 Pet still resting (energy 2.6%, wake threshold 65.0%); deferring other actions
+2025-12-10 21:23:51,257 pett_agent INFO: 🧾 Passive SLEEP requires verification; briefly toggling rest to submit on-chain record
+2025-12-10 21:23:51,258 agent.pett_websocket_client INFO: 📤 Sent message type: SLEEP
+2025-12-10 21:23:51,258 agent.pett_websocket_client INFO: 📤 Message content: {"type": "SLEEP", "data": {}, "nonce": "30247"}
+2025-12-10 21:23:51,460 agent.pett_websocket_client INFO: Pet Status updated (merged partial update)
+2025-12-10 21:23:51,461 agent.pett_websocket_client INFO: Updated pet data: {'id': '80ae740c-3192-4884-9d5e-3a38343124b7', 'name': 'CrazyDev23', 'userID': '491301d8-d495-4d26-97c8-3b1c9ec9c42e', 'sleeping': False, 'dead': False, 'god': False, 'active': True, 'currentHotelTier': 0, 'hasSeasonPass': False, 'seasonPassPurchaseDate': None, 'deathAt': '2025-12-13T01:20:49.024Z', 'PetTokens': {'petID': '80ae740c-3192-4884-9d5e-3a38343124b7', 'tokens': '1113305000007000000000', 'ethTokens': '10572249999998000', 'solanaTokens': '0', 'stars': '0', 'useSolana': False, 'depositedTokens': '0'}, 'PetStats': {'petID': '80ae740c-3192-4884-9d5e-3a38343124b7', 'hunger': '5.96', 'health': '0', 'hygiene': '0', 'energy': '2.61', 'happiness': '0', 'xp': '141007.2', 'level': 37, 'xpMax': 144400, 'xpMin': 1}}
+2025-12-10 21:23:51,462 agent.pett_websocket_client INFO: 📊 Received data message
+2025-12-10 21:23:51,463 agent.pett_websocket_client INFO: Data message: {'type': 'data', 'data': {'partialUpdate': {'id': '80ae740c-3192-4884-9d5e-3a38343124b7', 'active': True, 'currentHotelTier': 0, 'dead': False, 'sleeping': False}}, 'nonce': '30247', 'timestamp': 1765401831520}
+2025-12-10 21:23:51,463 agent.pett_websocket_client INFO: ✅ SLEEP action confirmed by server
+2025-12-10 21:23:51,965 agent.pett_websocket_client INFO: 📤 Sent message type: SLEEP
+2025-12-10 21:23:51,965 agent.pett_websocket_client INFO: 📤 Message content: {"type": "SLEEP", "data": {}, "nonce": "13101", "verify": true}
+2025-12-10 21:23:52,018 agent.pett_websocket_client ERROR: Server error: You are performing this action too quickly. Please slow down.
+2025-12-10 21:23:52,019 agent.pett_websocket_client INFO: 📤 Sent message type: SLEEP
+2025-12-10 21:23:52,019 agent.pett_websocket_client INFO: 📤 Message content: {"type": "SLEEP", "data": {}, "nonce": "61942"}
+2025-12-10 21:23:52,072 agent.pett_websocket_client ERROR: Server error: You are performing this action too quickly. Please slow down.
+2025-12-10 21:23:52,073 pett_agent INFO: 🧾 Recording passive SLEEP action while maintaining rest
+2025-12-10 21:23:52,075 pett_agent WARNING: Staking KPI snapshot unavailable for SLEEP: checkpoint client is running in checkpoint-only mode; staking KPIs unavailable
+2025-12-10 21:23:52,076 pett_agent INFO: 📋 Action SLEEP recorded (2/8 today (local tracker), 6 remaining) — pending staking KPIs
+2025-12-10 21:23:53,563 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-10 21:23:53,609 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:23:53,609 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-10 21:23:53,610 pett_agent INFO: 🛑 Web server stopped
+2025-12-10 21:23:53,610 pett_agent INFO: ✅ Pett Agent shutdown complete
+2025-12-10 21:23:59,372 pett_agent INFO: 🚀 Starting Pett Agent with Olas SDK compliance
+2025-12-10 21:23:59,372 pett_agent INFO: Ethereum private key: Found
+2025-12-10 21:23:59,372 pett_agent INFO: Withdrawal mode: False
+2025-12-10 21:23:59,372 pett_agent INFO: 📋 Loaded 0 environment variables
+2025-12-10 21:23:59,378 pett_agent WARNING: No store path configured, agent performance metrics will be on the current directory
+2025-12-10 21:23:59,933 pett_agent INFO: Using Safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F on chainId 8453
+2025-12-10 21:24:00,951 pett_agent INFO: Safe owners (n=1): ['0xE43d9713a0999B965750fC94934D64CA7d5D2e15']
+2025-12-10 21:24:00,952 pett_agent INFO: Safe threshold: 1
+2025-12-10 21:24:00,952 pett_agent ERROR: Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)
+2025-12-10 21:24:00,952 pett_agent ERROR: Safe ownership/threshold validation failed during initialisation; ActionRecorder disabled
+2025-12-10 21:24:00,953 pett_agent WARNING: Staking configuration not provided via environment variables. Missing: SERVICE_ID, STAKING_CONTRACT_ADDRESS (or STAKING_PROGRAM_ID / STAKING_TOKEN_ADDRESS)
+2025-12-10 21:24:00,953 pett_agent INFO: Staking contract address not configured; defaulting to 0x31183503be52391844594b4B587F0e764eB3956E
+2025-12-10 21:24:01,163 pett_agent INFO: Staking checkpoint client initialised for agent 0xDd03...2803 (safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F, contract 0x31183503be52391844594b4B587F0e764eB3956E)
+2025-12-10 21:24:01,163 pett_agent INFO: 🔧 Olas SDK Interface initialized
+2025-12-10 21:24:01,164 pett_agent INFO: 🐾 Pett Agent initialized
+2025-12-10 21:24:01,165 pett_agent INFO: 🚀 Initializing Pett Agent components...
+2025-12-10 21:24:01,166 pett_agent INFO: 🎨 Loading React frontend from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend...
+2025-12-10 21:24:01,166 pett_agent INFO: ✅ Found pre-built React assets at /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:24:01,166 pett_agent INFO: ✅ React UI enabled, serving from /Users/polpedu/Projects/pett_agent/olas-sdk-starter/frontend/build
+2025-12-10 21:24:01,169 pett_agent INFO: 🌐 Web server started on http://0.0.0.0:8716 (access via http://localhost:8716)
+2025-12-10 21:24:01,169 pett_agent INFO: 🎨 React App available at http://localhost:8716/ (Dashboard at /dashboard)
+2025-12-10 21:24:01,170 pett_agent INFO: 🏥 Health API: http://localhost:8716/api/health
+2025-12-10 21:24:01,170 pett_agent INFO: ℹ️  No PRIVY_TOKEN in environment
+2025-12-10 21:24:01,171 pett_agent INFO: ✨ Waiting for user to login via React app at http://localhost:8716/
+2025-12-10 21:24:01,171 pett_agent INFO: 🧾 On-chain action recorder DISABLED (missing key or RPC)
+2025-12-10 21:24:01,171 pett_agent INFO: ℹ️ Telegram integration is optional and not required to run Pett Agent. A TELEGRAM_BOT_TOKEN was not provided, so Telegram features will be unavailable while the agent keeps running.
+2025-12-10 21:24:01,171 pett_agent INFO: ✅ Pett Agent initialization complete
+2025-12-10 21:24:01,171 pett_agent INFO: 🎯 Pett Agent is now running...
+2025-12-10 21:24:01,171 pett_agent INFO: Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent
+2025-12-10 21:24:03,693 pett_agent INFO: Submitting staking checkpoint transaction via safe 0x066B82E413b30eCcbe65622aF31a65fde95Be88F (nonce=0, timestamp=1765358133)
+2025-12-10 21:24:05,499 pett_agent WARNING: Staking checkpoint attempt failed: {'message': 'failed to send tx', 'code': -32603}
+2025-12-10 21:24:10,162 pett_agent INFO: 🔐 Received login request from React frontend
+2025-12-10 21:24:10,163 pett_agent INFO: 🔐 Updating Privy token and refreshing WebSocket connection
+2025-12-10 21:24:10,163 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:24:10,163 agent.pett_websocket_client INFO: 🆕 Using environment auth token for connection
+2025-12-10 21:24:10,163 agent.pett_websocket_client INFO: 🔄 Connection attempt 1/3
+2025-12-10 21:24:10,163 agent.pett_websocket_client INFO: 🔌 Connecting to WebSocket: wss://ws.pett.ai
+2025-12-10 21:24:10,283 agent.pett_websocket_client INFO: ✅ WebSocket connection established
+2025-12-10 21:24:10,284 agent.pett_websocket_client INFO: ✅ WebSocket connected, starting message listener...
+2025-12-10 21:24:10,284 agent.pett_websocket_client INFO: 👂 Started WebSocket message listener
+2025-12-10 21:24:10,284 agent.pett_websocket_client INFO: 🔐 Attempting authentication...
+2025-12-10 21:24:10,284 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:24:10,285 agent.pett_websocket_client INFO: 👂 Starting WebSocket message listener...
+2025-12-10 21:24:10,367 agent.pett_websocket_client INFO: ✅ Connection and authentication successful!
+2025-12-10 21:24:10,488 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:24:10,503 pett_agent INFO: 😴 Low energy detected; initiating sleep
+2025-12-10 21:24:10,504 agent.pett_websocket_client INFO: 📤 Sent message type: SLEEP
+2025-12-10 21:24:10,504 agent.pett_websocket_client INFO: 📤 Message content: {"type": "SLEEP", "data": {}, "nonce": "52141", "verify": true}
+2025-12-10 21:24:10,671 agent.pett_websocket_client INFO: Pet Status updated (merged partial update)
+2025-12-10 21:24:10,671 agent.pett_websocket_client INFO: Updated pet data: {'id': '80ae740c-3192-4884-9d5e-3a38343124b7', 'name': 'CrazyDev23', 'userID': '491301d8-d495-4d26-97c8-3b1c9ec9c42e', 'sleeping': True, 'dead': False, 'god': False, 'active': True, 'currentHotelTier': 0, 'hasSeasonPass': False, 'seasonPassPurchaseDate': None, 'deathAt': '2025-12-13T01:21:51.695Z', 'PetTokens': {'petID': '80ae740c-3192-4884-9d5e-3a38343124b7', 'tokens': '1113305000007000000000', 'ethTokens': '10572249999998000', 'solanaTokens': '0', 'stars': '0', 'useSolana': False, 'depositedTokens': '0'}, 'PetStats': {'petID': '80ae740c-3192-4884-9d5e-3a38343124b7', 'hunger': '5.96', 'health': '0', 'hygiene': '0', 'energy': '2.61', 'happiness': '0', 'xp': '141007.2', 'level': 37, 'xpMax': 144400, 'xpMin': 1}}
+2025-12-10 21:24:10,671 agent.pett_websocket_client INFO: 📊 Received data message
+2025-12-10 21:24:10,672 agent.pett_websocket_client INFO: Data message: {'type': 'data', 'data': {'verification': {'hash': '0x14e347d1fe6c2704ea62e06fed6b3e455eaccb10003b8ba587d0a3a46db3f97a', 'signature': {'v': 27, 'r': '0x2d8aa4a3ec2df723dc561bb80a9d08533bd4ef8999f55ba9c0f32828226ae527', 's': '0x4ba4e3938395c93a48d91bd7c46260be202f1e9a50a3b3cd817745d1573ae84f'}, 'message': {'action': 5, 'actionName': 'SLEEP', 'timestamp': '1765401850', 'nonce': '0x1697d62533332893a1df8833e2f272bcb8bcbe753c55177c6c14a1dea219956d'}, 'issuedAt': '2025-12-10T21:24:10.000Z', 'reason': 'socket-request'}}, 'nonce': '52141', 'timestamp': 1765401850730}
+2025-12-10 21:24:10,672 agent.pett_websocket_client INFO: ✅ SLEEP action confirmed by server
+2025-12-10 21:24:10,672 agent.pett_websocket_client INFO: 📗 Submitting verified SLEEP action on-chain
+2025-12-10 21:24:10,672 agent.pett_websocket_client INFO: 🧾 Skipping on-chain record for SLEEP: action recorder disabled (missing key/RPC)
+2025-12-10 21:24:10,673 pett_agent WARNING: Staking KPI snapshot unavailable for SLEEP: checkpoint client is running in checkpoint-only mode; staking KPIs unavailable
+2025-12-10 21:24:10,674 pett_agent INFO: 📋 Action SLEEP recorded (3/8 today (local tracker), 5 remaining) — pending staking KPIs
+2025-12-10 21:24:15,483 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:24:21,149 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:24:26,150 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:24:31,155 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:24:36,150 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:24:41,148 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:24:46,150 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:24:51,148 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:24:56,149 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:25:01,146 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:25:06,152 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:25:11,149 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:25:16,148 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:25:20,480 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:25:30,144 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:25:46,699 pett_agent INFO: 🔐 Received login request from React frontend
+2025-12-10 21:25:46,700 pett_agent INFO: 🔐 Updating Privy token and refreshing WebSocket connection
+2025-12-10 21:25:46,746 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:25:46,747 agent.pett_websocket_client INFO: 🔄 Using saved auth token for reconnection
+2025-12-10 21:25:46,747 agent.pett_websocket_client INFO: 🔄 Connection attempt 1/3
+2025-12-10 21:25:46,747 agent.pett_websocket_client INFO: 🔌 Connecting to WebSocket: wss://ws.pett.ai
+2025-12-10 21:25:47,025 agent.pett_websocket_client INFO: ✅ WebSocket connection established
+2025-12-10 21:25:47,025 agent.pett_websocket_client INFO: ✅ WebSocket connected, starting message listener...
+2025-12-10 21:25:47,025 agent.pett_websocket_client INFO: 👂 Started WebSocket message listener
+2025-12-10 21:25:47,025 agent.pett_websocket_client INFO: 🔐 Attempting authentication...
+2025-12-10 21:25:47,026 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:25:47,026 agent.pett_websocket_client INFO: 👂 Starting WebSocket message listener...
+2025-12-10 21:25:47,140 agent.pett_websocket_client INFO: ✅ Connection and authentication successful!
+2025-12-10 21:25:47,167 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:25:53,146 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:25:58,147 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:26:03,147 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:26:08,199 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:26:13,150 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:26:18,151 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:26:23,147 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:26:28,152 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:26:33,151 agent.pett_websocket_client INFO: 📤 Sent message type: AUTH
+2025-12-10 21:26:37,234 pett_agent INFO: 🛑 Shutting down Pett Agent...
+2025-12-10 21:26:37,312 agent.pett_websocket_client INFO: WebSocket connection closed
+2025-12-10 21:26:37,313 pett_agent INFO: 🔌 WebSocket disconnected
+2025-12-10 21:26:37,313 pett_agent INFO: 🛑 Web server stopped
+2025-12-10 21:26:37,313 pett_agent INFO: ✅ Pett Agent shutdown complete

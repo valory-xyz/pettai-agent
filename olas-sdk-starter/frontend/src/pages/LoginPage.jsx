@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usePrivyModalHeight } from '../hooks/usePrivyModalHeight';
 import { useAuth } from '../providers/AuthProvider';
@@ -7,31 +7,23 @@ import backgroundOverlay from '../assets/images/background-0.jpg';
 import './LoginPage.scss';
 
 const LoginPage = () => {
-  const { login, isModalOpen, wsPet, authenticated } = useAuth();
+  const { login, isModalOpen, wsPet, authenticated, authError } = useAuth();
   const hasCalledLogin = useRef(false);
+  const [hasManuallyStarted, setHasManuallyStarted] = useState(false);
   const privyModalHeight = usePrivyModalHeight();
   const navigate = useNavigate();
 
-  useEffect(() => {
-    if (!hasCalledLogin.current) {
-      hasCalledLogin.current = true;
-      login();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const handleLaunchLogin = useCallback(() => {
+    hasCalledLogin.current = true;
+    setHasManuallyStarted(true);
+    login();
+  }, [login]);
 
   useEffect(() => {
     if (wsPet !== null) {
       navigate('/all-set', { replace: true });
     }
   }, [wsPet, navigate]);
-
-  useEffect(() => {
-    if (!isModalOpen && hasCalledLogin.current && !authenticated) {
-      login();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isModalOpen, authenticated]);
 
   if (authenticated && wsPet === null) {
     return (
@@ -69,6 +61,36 @@ const LoginPage = () => {
             Launch the secure Privy login to connect with your agent. Once authenticated, we&apos;ll take you
             straight into the control room.
           </p>
+          <div style={{ marginTop: '2rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+            <button
+              type="button"
+              onClick={handleLaunchLogin}
+              className="login-portal__launch-button"
+              disabled={isModalOpen}
+            >
+              Launch Privy Login
+            </button>
+            {!hasManuallyStarted && (
+              <p className="login-portal__hint">
+                A popup might be blocked by your browser. Click the button above to continue.
+              </p>
+            )}
+            {isModalOpen && (
+              <p className="login-portal__hint">
+                Login window open—complete the Privy flow to continue.
+              </p>
+            )}
+            {!isModalOpen && hasManuallyStarted && !authenticated && !authError && (
+              <p className="login-portal__hint">
+                Didn&apos;t see the popup? Click the button again to relaunch.
+              </p>
+            )}
+            {authError && (
+              <p className="login-portal__hint login-portal__hint--error">
+                {authError}
+              </p>
+            )}
+          </div>
         </div>
       </div>
 
@@ -201,6 +223,32 @@ const LoginPage = () => {
           font-size: 1.05rem;
           line-height: 1.55;
           color: rgba(217, 228, 255, 0.75);
+        }
+
+        .login-portal__launch-button {
+          padding: 0.9rem 1.5rem;
+          border: none;
+          border-radius: 999px;
+          font-size: 1rem;
+          font-weight: 600;
+          background: linear-gradient(90deg, #8faeff, #4a90e2);
+          color: #0b0f26;
+          cursor: pointer;
+          transition: opacity 0.2s ease;
+        }
+
+        .login-portal__launch-button:disabled {
+          opacity: 0.6;
+          cursor: not-allowed;
+        }
+
+        .login-portal__hint {
+          font-size: 0.85rem;
+          color: rgba(217, 228, 255, 0.7);
+        }
+
+        .login-portal__hint--error {
+          color: #fca5a5;
         }
 
         .login-portal__card {

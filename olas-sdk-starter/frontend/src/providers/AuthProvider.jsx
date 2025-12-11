@@ -1,88 +1,141 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
+import React, {
+	createContext,
+	useCallback,
+	useContext,
+	useEffect,
+	useRef,
+	useState,
+} from 'react';
 
 const AuthContext = createContext(null);
+const POPUP_FEATURES = 'width=420,height=720,resizable=yes,scrollbars=yes';
 
 export const AuthProvider = ({ children }) => {
-	const {
-		ready,
-		login,
-		isModalOpen,
-		user: privyUser,
-		logout: privyLogout,
-		authenticated: privyAuthenticated,
-		getAccessToken: privyGetAccessToken,
-	} = usePrivy();
-
+	const [ready, setReady] = useState(false);
+	const [authenticated, setAuthenticated] = useState(false);
+	const [isPopupOpen, setIsPopupOpen] = useState(false);
 	const [wsPet, setWsPet] = useState(null);
 	const [authFailed, setAuthFailed] = useState(false);
 	const [authError, setAuthError] = useState(null);
+	const popupRef = useRef(null);
 
+	const cleanupPopup = useCallback(() => {
+		if (popupRef.current) {
+			try {
+				if (!popupRef.current.closed) {
+					popupRef.current.close();
+				}
+			} catch (error) {
+				console.warn('[Auth] Unable to close popup window', error);
+			}
+			popupRef.current = null;
+		}
+		setIsPopupOpen(false);
+	}, []);
+
+	const authenticateWithBackend = useCallback(async token => {
+		if (!token) {
+			return;
+		}
+		try {
+			const response = await fetch('/api/login', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ privy_token: token }),
+			});
+			const data = await response.json();
+
+			if (!response.ok || data?.success !== true) {
+				console.error('[Auth] Backend login failed:', data);
+				setAuthFailed(true);
+				setAuthenticated(false);
+				setAuthError(
+					data?.message || 'Backend login failed. Please try again.'
+				);
+				return;
+			}
+
+			console.log('[Auth] Backend login successful:', data);
+
+			setWsPet(data.name || 'Connected');
+			setAuthFailed(false);
+			setAuthError(null);
+			setAuthenticated(true);
+		} catch (error) {
+			console.error('[Auth] Error sending Privy token:', error?.message || error);
+			setAuthFailed(true);
+			setAuthenticated(false);
+			setAuthError(error?.message || 'Unable to authenticate with backend.');
+		}
+	}, []);
 
 	useEffect(() => {
-		const getToken = async () => {
-			if (privyAuthenticated && privyUser) {
-				try {
-					// Get the Privy access token
-					const token = await privyGetAccessToken();
-
-					// Send token to Python backend to authenticate WebSocket
-					const response = await fetch('/api/login', {
-						method: 'POST',
-						headers: { 'Content-Type': 'application/json' },
-						body: JSON.stringify({ privy_token: token }),
-					});
-					const data = await response.json();
-
-					if (!response.ok || data?.success !== true) {
-						console.error('[Auth] Backend login failed:', data);
-						setAuthFailed(true);
-						return;
-					}
-
-					console.log('[Auth] Backend login successful:', data);
-
-					// Mark pet connection as established (string used by router logic)
-					setWsPet(data.name || 'Connected');
-					setAuthFailed(false);
-				} catch (error) {
-					// Log error without exposing sensitive token information
-					console.error('[Auth] Error getting Privy token:', error?.message || 'Unknown error');
-					setAuthFailed(true);
-				}
+		setReady(true);
+		const handleMessage = event => {
+			if (event.origin !== window.location.origin) return;
+			const { type, token } = event.data || {};
+			if (type === 'privy-token' && token) {
+				cleanupPopup();
+				authenticateWithBackend(token);
+			}
+			if (type === 'privy-popup-closed') {
+				cleanupPopup();
 			}
 		};
 
-		if (privyAuthenticated && ready) {
-			getToken();
-		}
-	}, [privyAuthenticated, ready, privyUser, privyGetAccessToken]);
+		window.addEventListener('message', handleMessage);
+		return () => window.removeEventListener('message', handleMessage);
+	}, [authenticateWithBackend, cleanupPopup]);
 
-	const logout = async () => {
+	useEffect(() => {
+		if (!isPopupOpen) return undefined;
+		const checker = setInterval(() => {
+			if (popupRef.current && popupRef.current.closed) {
+				popupRef.current = null;
+				setIsPopupOpen(false);
+			}
+		}, 500);
+
+		return () => clearInterval(checker);
+	}, [isPopupOpen]);
+
+	const login = useCallback(() => {
+		const popupUrl = new URL('/privy-login', window.location.origin).toString();
+		const popup = window.open(popupUrl, 'privy-login', POPUP_FEATURES);
+		if (popup) {
+			popupRef.current = popup;
+			setIsPopupOpen(true);
+			popup.focus();
+			setAuthError(null);
+		} else {
+			setAuthError(
+				'Unable to open login window. Please allow popups and try again.'
+			);
+		}
+	}, []);
+
+	const logout = useCallback(async () => {
 		try {
 			await fetch('/api/logout', { method: 'POST' });
 		} catch (e) {
 			console.warn('[Auth] Backend logout failed (continuing):', e);
 		}
-		try {
-			await privyLogout();
-		} finally {
-			setWsPet(null);
-			setAuthFailed(false);
-			setAuthError(null);
-		}
-	};
+		setWsPet(null);
+		setAuthFailed(false);
+		setAuthError(null);
+		setAuthenticated(false);
+	}, []);
 
 	const value = {
 		login,
 		logout,
-		authenticated: privyAuthenticated,
+		authenticated,
 		ready,
-		user: privyUser,
+		user: null,
 		wsPet,
 		authFailed,
 		authError,
-		isModalOpen,
+		isModalOpen: isPopupOpen,
 	};
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -95,4 +148,3 @@ export const useAuth = () => {
 	}
 	return context;
 };
-

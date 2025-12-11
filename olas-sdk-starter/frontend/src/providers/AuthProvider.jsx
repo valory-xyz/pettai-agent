@@ -17,6 +17,7 @@ export const AuthProvider = ({ children }) => {
 	const [wsPet, setWsPet] = useState(null);
 	const [authFailed, setAuthFailed] = useState(false);
 	const [authError, setAuthError] = useState(null);
+	const [popupStatus, setPopupStatus] = useState(null);
 	const popupRef = useRef(null);
 
 	const cleanupPopup = useCallback(() => {
@@ -49,9 +50,15 @@ export const AuthProvider = ({ children }) => {
 				console.error('[Auth] Backend login failed:', data);
 				setAuthFailed(true);
 				setAuthenticated(false);
-				setAuthError(
-					data?.message || 'Backend login failed. Please try again.'
-				);
+				const backendMessage =
+					data?.message || 'Backend login failed. Please try again.';
+				setAuthError(backendMessage);
+				setPopupStatus({
+					status: 'error',
+					message: backendMessage,
+					error: data,
+					timestamp: Date.now(),
+				});
 				return;
 			}
 
@@ -61,11 +68,24 @@ export const AuthProvider = ({ children }) => {
 			setAuthFailed(false);
 			setAuthError(null);
 			setAuthenticated(true);
+			setPopupStatus({
+				status: 'completed',
+				message: 'Authenticated successfully. Connecting to your Pett agent…',
+				timestamp: Date.now(),
+			});
 		} catch (error) {
 			console.error('[Auth] Error sending Privy token:', error?.message || error);
 			setAuthFailed(true);
 			setAuthenticated(false);
-			setAuthError(error?.message || 'Unable to authenticate with backend.');
+			const backendErrorMessage =
+				error?.message || 'Unable to authenticate with backend.';
+			setAuthError(backendErrorMessage);
+			setPopupStatus({
+				status: 'error',
+				message: backendErrorMessage,
+				error,
+				timestamp: Date.now(),
+			});
 		}
 	}, []);
 
@@ -73,12 +93,54 @@ export const AuthProvider = ({ children }) => {
 		setReady(true);
 		const handleMessage = event => {
 			if (event.origin !== window.location.origin) return;
-			const { type, token } = event.data || {};
+			const { type, token, status, message, error } = event.data || {};
+
 			if (type === 'privy-token' && token) {
 				cleanupPopup();
+				setPopupStatus({
+					status: 'token-received',
+					message: 'Privy token received. Finalizing authentication…',
+					timestamp: Date.now(),
+				});
 				authenticateWithBackend(token);
 			}
+
+			if (type === 'privy-popup-status') {
+				setPopupStatus({
+					status: status || 'unknown',
+					message: message || '',
+					error: error || null,
+					timestamp: Date.now(),
+				});
+				if (status === 'error') {
+					setAuthFailed(true);
+					setAuthError(error?.message || message || 'Login failed. Please try again.');
+				} else if (!error) {
+					setAuthFailed(false);
+					setAuthError(null);
+				}
+			}
+
+			if (type === 'privy-popup-error') {
+				const popupMessage =
+					error?.message || message || 'Login window reported an error. Please try again.';
+				setPopupStatus({
+					status: 'error',
+					message: popupMessage,
+					error: error || null,
+					timestamp: Date.now(),
+				});
+				setAuthFailed(true);
+				setAuthError(popupMessage);
+				cleanupPopup();
+			}
+
 			if (type === 'privy-popup-closed') {
+				setPopupStatus({
+					status: 'closed',
+					message: message || 'Login window closed.',
+					timestamp: Date.now(),
+				});
 				cleanupPopup();
 			}
 		};
@@ -105,12 +167,22 @@ export const AuthProvider = ({ children }) => {
 		if (popup) {
 			popupRef.current = popup;
 			setIsPopupOpen(true);
+			setPopupStatus({
+				status: 'opening',
+				message: 'Opening secure Privy login…',
+				timestamp: Date.now(),
+			});
 			popup.focus();
 			setAuthError(null);
 		} else {
-			setAuthError(
-				'Unable to open login window. Please allow popups and try again.'
-			);
+			const message =
+				'Unable to open login window. Please allow popups and try again.';
+			setPopupStatus({
+				status: 'error',
+				message,
+				timestamp: Date.now(),
+			});
+			setAuthError(message);
 		}
 	}, []);
 
@@ -124,6 +196,7 @@ export const AuthProvider = ({ children }) => {
 		setAuthFailed(false);
 		setAuthError(null);
 		setAuthenticated(false);
+		setPopupStatus(null);
 	}, []);
 
 	const value = {
@@ -136,6 +209,7 @@ export const AuthProvider = ({ children }) => {
 		authFailed,
 		authError,
 		isModalOpen: isPopupOpen,
+		popupStatus,
 	};
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

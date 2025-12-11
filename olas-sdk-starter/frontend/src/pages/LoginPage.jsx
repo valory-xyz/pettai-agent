@@ -7,11 +7,18 @@ import backgroundOverlay from '../assets/images/background-0.jpg';
 import './LoginPage.scss';
 
 const LoginPage = () => {
-  const { login, isModalOpen, wsPet, authenticated, authError } = useAuth();
+  const { login, isModalOpen, wsPet, authenticated, authError, popupStatus } = useAuth();
   const hasCalledLogin = useRef(false);
   const [hasManuallyStarted, setHasManuallyStarted] = useState(false);
   const privyModalHeight = usePrivyModalHeight();
   const navigate = useNavigate();
+
+  useEffect(() => {
+    document.body.classList.add('pett-login-page');
+    return () => {
+      document.body.classList.remove('pett-login-page');
+    };
+  }, []);
 
   const handleLaunchLogin = useCallback(() => {
     hasCalledLogin.current = true;
@@ -83,6 +90,11 @@ const LoginPage = () => {
             {!isModalOpen && hasManuallyStarted && !authenticated && !authError && (
               <p className="login-portal__hint">
                 Didn&apos;t see the popup? Click the button again to relaunch.
+              </p>
+            )}
+            {popupStatus?.message && popupStatus.status !== 'error' && (
+              <p className="login-portal__hint">
+                {popupStatus.message}
               </p>
             )}
             {authError && (

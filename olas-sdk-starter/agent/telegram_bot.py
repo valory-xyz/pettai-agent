@@ -184,8 +184,9 @@ class PetTelegramBot:
 async def main():
     """Main function to run the bot."""
     try:
-        bot = PetTelegramBot()
-        await bot.run()
+        # bot = PetTelegramBot()
+        # await bot.run()
+        print("Telegram bot is not running")
     except Exception as e:
         logger.error(f"Error starting bot: {e}")
         raise

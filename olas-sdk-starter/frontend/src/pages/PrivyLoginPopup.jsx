@@ -21,20 +21,23 @@ const PrivyLoginPopupContent = () => {
   const [email, setEmail] = useState('');
   const [emailWithCode, setEmailWithCode] = useState(null);
   const [code, setCode] = useState('');
-  const statusCopy = {
-    [STATUS.INITIALIZING]: 'Preparing secure login…',
-    [STATUS.PROMPTING]: 'Enter your email to receive a secure login code.',
-    [STATUS.SENDING_CODE]: 'Sending a secure login code…',
-    [STATUS.AWAITING_CODE]: 'Enter the code from your email to continue.',
-    [STATUS.VERIFYING_CODE]: 'Verifying your code…',
-    [STATUS.SENDING]: 'Securing your session…',
-    [STATUS.ERROR]:
-      errorMessage || 'Something went wrong. Close this window and retry.',
-    [STATUS.NO_OPENER]:
-      errorMessage ||
-      'Could not detect the Pett Agent dashboard. Close this window and retry.',
-    [STATUS.COMPLETED]: 'Login successful. You can close this tab.',
-  };
+  const statusCopy = useMemo(
+    () => ({
+      [STATUS.INITIALIZING]: 'Preparing secure login…',
+      [STATUS.PROMPTING]: 'Enter your email to receive a secure login code.',
+      [STATUS.SENDING_CODE]: 'Sending a secure login code…',
+      [STATUS.AWAITING_CODE]: 'Enter the code from your email to continue.',
+      [STATUS.VERIFYING_CODE]: 'Verifying your code…',
+      [STATUS.SENDING]: 'Securing your session…',
+      [STATUS.ERROR]:
+        errorMessage || 'Something went wrong. Close this window and retry.',
+      [STATUS.NO_OPENER]:
+        errorMessage ||
+        'Could not detect the Pett Agent dashboard. Close this window and retry.',
+      [STATUS.COMPLETED]: 'Login successful. You can close this tab.',
+    }),
+    [errorMessage]
+  );
   const sendMessageToOpener = useCallback(payload => {
     try {
       if (window.opener && !window.opener.closed) {
@@ -184,7 +187,7 @@ const PrivyLoginPopupContent = () => {
     if (ready && authenticated) {
       sendToken();
     }
-  }, [ready, authenticated, getAccessToken, logout, handlePrivyError, sendMessageToOpener]);
+  }, [ready, authenticated, getAccessToken, logout, handlePrivyError, sendMessageToOpener, statusCopy]);
 
   const statusDescription = statusCopy[status];
 

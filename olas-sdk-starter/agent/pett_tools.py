@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, List, Annotated, TYPE_CHECKING
+from typing import Any, List, Annotated, TYPE_CHECKING
 import asyncio
 from .pett_websocket_client import PettWebSocketClient
 import logging
@@ -760,9 +760,7 @@ class PettTools:
                 return f"❌ Error buying accessory: {str(e)}"
 
         @tool
-        def ai_search(
-            prompt: str, client: InjectedClientArg = None
-        ) -> str:
+        def ai_search(prompt: str, client: InjectedClientArg = None) -> str:
             """Perform an AI-powered web search to find information on any topic.
 
             This powerful tool leverages artificial intelligence to search the web and
@@ -852,9 +850,7 @@ class PettTools:
                 return f"❌ Error getting personality: {str(e)}"
 
         @tool
-        def generate_image(
-            prompt: str, client: InjectedClientArg = None
-        ) -> str:
+        def generate_image(prompt: str, client: InjectedClientArg = None) -> str:
             """Generate a custom image using AI based on your description.
 
             This creative tool uses artificial intelligence to generate unique images
@@ -984,9 +980,7 @@ class PettTools:
                 return f"❌ Error checking out of hotel: {str(e)}"
 
         @tool
-        def buy_hotel(
-            tier: str, client: InjectedClientArg = None
-        ) -> str:
+        def buy_hotel(tier: str, client: InjectedClientArg = None) -> str:
             """Purchase a hotel tier upgrade for enhanced accommodations.
 
             Hotel tiers represent different levels of luxury and service quality available

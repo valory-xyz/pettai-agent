@@ -55,7 +55,7 @@ const Dashboard = () => {
 	// chat history disabled
 
 	const bottomUIRef = useRef(null);
-	const bottomUIPositionRef = useRef(0);
+	const [bottomUIOffset, setBottomUIOffset] = useState(LAYOUT_CONSTANTS.BOTTOM_UI_PADDING);
 
 	useEffect(() => {
 		return () => {
@@ -109,10 +109,9 @@ const Dashboard = () => {
 
 	useEffect(() => {
 		const updateBottomUIPosition = () => {
-			if (bottomUIRef.current) {
-				const rect = bottomUIRef.current.getBoundingClientRect();
-				bottomUIPositionRef.current = rect.height + LAYOUT_CONSTANTS.BOTTOM_UI_PADDING;
-			}
+			if (!bottomUIRef.current) return;
+			const rect = bottomUIRef.current.getBoundingClientRect();
+			setBottomUIOffset(rect.height + LAYOUT_CONSTANTS.BOTTOM_UI_PADDING);
 		};
 
 		const timer = setTimeout(updateBottomUIPosition, LAYOUT_CONSTANTS.BOTTOM_UI_POSITION_DELAY);
@@ -373,16 +372,19 @@ const Dashboard = () => {
 		window.open(PETT_GAME_APP_URL, '_blank', 'noopener,noreferrer');
 	}, []);
 
+	const contentPaddingBottom = bottomUIOffset + 80;
+
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex flex-col items-center overflow-hidden"
+			className="relative z-50 min-h-screen w-full flex flex-col items-center overflow-x-hidden"
 			style={{
 				backgroundImage: `url(${backgroundMain})`,
 				backgroundRepeat: 'no-repeat',
 				backgroundPosition: 'center 10%',
 				backgroundSize: 'auto',
 				backgroundColor: '#9ab8f6',
+				minHeight: '100vh',
 			}}
 		>
 
@@ -395,39 +397,39 @@ const Dashboard = () => {
 					zIndex: 1,
 				}}
 			/>
+		<button
+			type="button"
+			onClick={handleLogout}
+			className="fixed top-4 left-4 z-50 text-white hover:text-gray-100 transition-colors bg-red-600/90 hover:bg-red-700 rounded-full p-2 fade-in-delayed shadow-lg"
+			style={{ zIndex: 100 }}
+			aria-label="Log out"
+			title="Log out"
+		>
+			<span className="text-sm font-bold">Log Out</span>
+		</button>
 
-			<button
-				type="button"
-				onClick={handleLogout}
-				className="absolute top-4 left-4 z-50 text-white hover:text-gray-100 transition-colors bg-red-600/90 hover:bg-red-700 rounded-full p-2 fade-in-delayed shadow-lg"
-				style={{ zIndex: 100 }}
-				aria-label="Log out"
-				title="Log out"
-			>
-				<span className="text-sm font-bold">Log Out</span>
-			</button>
+		<button
+			type="button"
+			onClick={handleViewHistory}
+			className="fixed top-4 right-4 z-50 text-white hover:text-gray-100 transition-colors bg-purple-800/90 hover:bg-purple-900 rounded-full p-2 fade-in-delayed shadow-lg"
+			style={{ zIndex: 100 }}
+			aria-label="View action history"
+			title="View action history"
+		>
+			<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+				<path fill="currentColor" d="M13.5 8H12v5l4.28 2.54l.72-1.21l-3.5-2.08zM13 3a9 9 0 0 0-9 9H1l3.96 4.03L9 12H6a7 7 0 0 1 7-7a7 7 0 0 1 7 7a7 7 0 0 1-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.9 8.9 0 0 0 13 21a9 9 0 0 0 9-9a9 9 0 0 0-9-9" />
+			</svg>
+		</button>
 
-			<button
-				type="button"
-				onClick={handleViewHistory}
-				className="absolute top-4 right-4 z-50 text-white hover:text-gray-100 transition-colors bg-purple-800/90 hover:bg-purple-900 rounded-full p-2 fade-in-delayed shadow-lg"
-				style={{ zIndex: 100 }}
-				aria-label="View action history"
-				title="View action history"
-			>
-				<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-					<path fill="currentColor" d="M13.5 8H12v5l4.28 2.54l.72-1.21l-3.5-2.08zM13 3a9 9 0 0 0-9 9H1l3.96 4.03L9 12H6a7 7 0 0 1 7-7a7 7 0 0 1 7 7a7 7 0 0 1-7 7c-1.93 0-3.68-.79-4.94-2.06l-1.42 1.42A8.9 8.9 0 0 0 13 21a9 9 0 0 0 9-9a9 9 0 0 0-9-9" />
-				</svg>
-			</button>
-
-			<div
-				className="flex-1 flex flex-col items-center relative px-4 py-6 w-full"
-				style={{
-					minHeight: '100vh',
-					overflow: 'visible',
-					zIndex: 10,
-				}}
-			>
+		<div
+			className="flex-1 flex flex-col items-center relative px-4 py-6 w-full"
+			style={{
+				minHeight: '100vh',
+				overflow: 'visible',
+				zIndex: 10,
+				paddingBottom: `${contentPaddingBottom}px`,
+			}}
+		>
 				<div className="chat-shell flex flex-col items-center gap-4">
 					<div className="w-full flex flex-wrap items-center justify-between gap-3">
 						<div className="flex flex-col gap-1">
@@ -485,17 +487,17 @@ const Dashboard = () => {
 						/>
 					</div>
 
-					<div
-						className={`relative mb-4 ${isAnimating ? 'pet-scale-initial' : 'pet-scale-final'}`}
-						style={{
-							minHeight: '280px',
-							width: '100%',
-							maxWidth: '400px',
-							transform: isAnimating ? 'scale(1) translateY(0)' : `scale(1.3) translateY(${bottomUIPositionRef.current}px)`,
-							transition: 'transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)',
-							opacity: 1,
-						}}
-					>
+				<div
+					className={`relative mb-4 ${isAnimating ? 'pet-scale-initial' : 'pet-scale-final'}`}
+					style={{
+						minHeight: '280px',
+						width: '100%',
+						maxWidth: '400px',
+						transform: isAnimating ? 'scale(1) translateY(0)' : `scale(1.3) translateY(${bottomUIOffset}px)`,
+						transition: 'transform 0.8s cubic-bezier(0.34, 1.56, 0.64, 1)',
+						opacity: 1,
+					}}
+				>
 						<div className="flex flex-col items-center justify-center" style={{ height: '230px', width: '230px', margin: '0 auto' }}>
 							<Pet name={healthData?.pet?.name} pet={petForView} size="big" />
 						</div>
@@ -521,11 +523,11 @@ const Dashboard = () => {
 				</div>
 			</div>
 
-			<div
-				ref={bottomUIRef}
-				className={`absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 via-black/40 to-transparent backdrop-blur-sm p-6 slide-up ${isAnimating ? 'slide-up-initial' : ''}`}
-				style={{
-					zIndex: 50,
+		<div
+			ref={bottomUIRef}
+			className={`fixed bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 via-black/40 to-transparent backdrop-blur-sm p-6 slide-up ${isAnimating ? 'slide-up-initial' : ''}`}
+			style={{
+				zIndex: 50,
 					background:
 						'linear-gradient(to top, rgba(0,0,0,0.6) 0%, rgba(0,0,0,0.4) 30%, rgba(0,0,0,0.2) 60%, transparent 100%)',
 					backdropFilter: 'blur(8px)',

@@ -360,7 +360,7 @@ const ActionHistory = () => {
 
 	return (
 		<div
-			className="fixed inset-0 z-50 flex flex-col items-center overflow-hidden"
+			className="relative z-50 min-h-screen w-full flex flex-col items-center overflow-x-hidden"
 			style={{
 				backgroundImage: `linear-gradient(135deg, rgba(49, 7, 85, 0.88), rgba(30, 27, 75, 0.88)), url(${backgroundMain})`,
 				backgroundBlendMode: 'overlay',
@@ -368,6 +368,7 @@ const ActionHistory = () => {
 				backgroundPosition: 'center 10%',
 				backgroundSize: 'cover',
 				backgroundColor: '#2e1065',
+				minHeight: '100vh',
 			}}
 		>
 			<style ref={styleRef} />
@@ -386,7 +387,7 @@ const ActionHistory = () => {
 			<button
 				type="button"
 				onClick={handleBack}
-				className="absolute top-4 left-4 z-[99] text-white transition-colors bg-white/10 hover:bg-white/15 hover:text-white rounded-full p-2 shadow-lg shadow-purple-900/40 border border-white/20 backdrop-blur"
+				className="fixed top-4 left-4 z-[99] text-white transition-colors bg-white/10 hover:bg-white/15 hover:text-white rounded-full p-2 shadow-lg shadow-purple-900/40 border border-white/20 backdrop-blur"
 				aria-label="Back to dashboard"
 				title="Back to dashboard"
 			>
@@ -407,9 +408,10 @@ const ActionHistory = () => {
 				className="flex-1 flex flex-col items-center relative px-4 pb-12 w-full"
 				style={{
 					minHeight: '100vh',
-					overflow: 'hidden',
+					overflow: 'visible',
 					paddingTop: '24px',
 					zIndex: 10,
+					paddingBottom: '48px',
 				}}
 			>
 				<div className="flex flex-col items-center w-full max-w-[550px] mx-auto">
@@ -575,4 +577,3 @@ const ActionHistory = () => {
 };
 
 export default ActionHistory;
-

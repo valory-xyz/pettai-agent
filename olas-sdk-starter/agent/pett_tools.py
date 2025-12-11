@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, List, Annotated
+from typing import Dict, Any, Optional, List, Annotated, TYPE_CHECKING
 import asyncio
 from .pett_websocket_client import PettWebSocketClient
 import logging
@@ -6,6 +6,13 @@ import json
 import random
 from langchain_core.tools import BaseTool, tool
 from langchain_core.tools import InjectedToolArg
+
+if TYPE_CHECKING:
+    _InjectedClientBase = PettWebSocketClient
+else:  # pragma: no cover - runtime only cares about injection marker
+    _InjectedClientBase = Any
+
+InjectedClientArg = Annotated[_InjectedClientBase, InjectedToolArg]
 
 logger = logging.getLogger(__name__)
 
@@ -239,7 +246,7 @@ class PettTools:
 
         @tool
         def rub_pet(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Rub the pet to increase happiness and strengthen your bond.
 
@@ -276,7 +283,7 @@ class PettTools:
 
         @tool
         def shower_pet(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Give the pet a refreshing shower to clean and revitalize them.
 
@@ -313,7 +320,7 @@ class PettTools:
 
         @tool
         def sleep_pet(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Put the pet to sleep to restore their energy and promote healthy rest.
 
@@ -350,7 +357,7 @@ class PettTools:
 
         @tool
         def throw_ball(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Throw a ball for the pet to play with and exercise.
 
@@ -388,7 +395,7 @@ class PettTools:
         @tool
         def use_consumable(
             consumable_id: str,
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Use a consumable item on the pet to provide various benefits.
 
@@ -441,7 +448,7 @@ class PettTools:
         def buy_consumable(
             consumable_id: str,
             amount: int = 1,
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Purchase consumable items for your pet from the store.
 
@@ -496,7 +503,7 @@ class PettTools:
 
         @tool
         def get_consumables(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Retrieve the current inventory of consumable items owned by the pet.
 
@@ -534,7 +541,7 @@ class PettTools:
 
         @tool
         def get_kitchen(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Retrieve kitchen information and available food preparation options.
 
@@ -578,7 +585,7 @@ class PettTools:
 
         @tool
         def get_mall(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Retrieve mall information and browse available items for purchase.
 
@@ -618,7 +625,7 @@ class PettTools:
 
         @tool
         def get_closet(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Retrieve closet information and view available accessories and clothing.
 
@@ -661,7 +668,7 @@ class PettTools:
         @tool
         def use_accessory(
             accessory_id: str,
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Equip an accessory on your pet to enhance their appearance and style.
 
@@ -708,7 +715,7 @@ class PettTools:
         @tool
         def buy_accessory(
             accessory_id: str,
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Purchase an accessory for your pet from the store.
 
@@ -754,7 +761,7 @@ class PettTools:
 
         @tool
         def ai_search(
-            prompt: str, client: Annotated[PettWebSocketClient, InjectedToolArg] = None
+            prompt: str, client: InjectedClientArg = None
         ) -> str:
             """Perform an AI-powered web search to find information on any topic.
 
@@ -805,7 +812,7 @@ class PettTools:
 
         @tool
         def get_personality(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Retrieve detailed personality information and traits of your pet.
 
@@ -846,7 +853,7 @@ class PettTools:
 
         @tool
         def generate_image(
-            prompt: str, client: Annotated[PettWebSocketClient, InjectedToolArg] = None
+            prompt: str, client: InjectedClientArg = None
         ) -> str:
             """Generate a custom image using AI based on your description.
 
@@ -896,7 +903,7 @@ class PettTools:
 
         @tool
         def hotel_check_in(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Check your pet into the hotel for premium care and services.
 
@@ -937,7 +944,7 @@ class PettTools:
 
         @tool
         def hotel_check_out(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Check your pet out of the hotel after their stay.
 
@@ -978,7 +985,7 @@ class PettTools:
 
         @tool
         def buy_hotel(
-            tier: str, client: Annotated[PettWebSocketClient, InjectedToolArg] = None
+            tier: str, client: InjectedClientArg = None
         ) -> str:
             """Purchase a hotel tier upgrade for enhanced accommodations.
 
@@ -1032,7 +1039,7 @@ class PettTools:
 
         @tool
         def get_office(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Get office information and current status.
 
@@ -1073,7 +1080,7 @@ class PettTools:
 
         @tool
         def get_pet_status(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Get the current status and statistics of the pet.
 
@@ -1113,7 +1120,7 @@ class PettTools:
 
         @tool
         def random_action(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Perform a random action with the pet for spontaneous interaction.
 
@@ -1213,7 +1220,7 @@ class PettTools:
 
         @tool
         def get_available_tools(
-            client: Annotated[PettWebSocketClient, InjectedToolArg] = None,
+            client: InjectedClientArg = None,
         ) -> str:
             """Get a comprehensive list of all available pet care tools and their descriptions.
 

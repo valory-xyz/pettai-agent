@@ -424,3 +424,4 @@ agent_id
 hash_id
 
 ../cron/__pycache__/
+olas-sdk-starter/agent/log.txt

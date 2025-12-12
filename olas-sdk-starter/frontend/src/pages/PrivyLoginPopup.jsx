@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
+import { getOriginAliases } from '../utils/originAliases';
 
 const STATUS = {
   INITIALIZING: 'initializing',
@@ -21,6 +22,40 @@ const PrivyLoginPopupContent = () => {
   const [email, setEmail] = useState('');
   const [emailWithCode, setEmailWithCode] = useState(null);
   const [code, setCode] = useState('');
+  const openerOrigins = useMemo(() => {
+    if (typeof window === 'undefined') {
+      return [];
+    }
+    const candidateOrigins = new Set();
+    if (typeof document !== 'undefined' && document.referrer) {
+      try {
+        const refOrigin = new URL(document.referrer).origin;
+        if (refOrigin) {
+          candidateOrigins.add(refOrigin);
+        }
+      } catch (error) {
+        console.warn('[PrivyLoginPopup] Unable to parse referrer origin', error);
+      }
+    }
+    if (window.opener && !window.opener.closed) {
+      try {
+        if (window.opener.location?.origin) {
+          candidateOrigins.add(window.opener.location.origin);
+        }
+      } catch (_error) {
+        // Access to opener location can throw for cross-origin windows.
+      }
+    }
+    candidateOrigins.add(window.location.origin);
+
+    const aliasSet = new Set();
+    candidateOrigins.forEach(origin => {
+      if (!origin) return;
+      getOriginAliases(origin).forEach(alias => aliasSet.add(alias));
+    });
+
+    return Array.from(aliasSet);
+  }, []);
   const statusCopy = useMemo(
     () => ({
       [STATUS.INITIALIZING]: 'Preparing secure login…',
@@ -38,18 +73,33 @@ const PrivyLoginPopupContent = () => {
     }),
     [errorMessage]
   );
-  const sendMessageToOpener = useCallback(payload => {
-    try {
-      if (window.opener && !window.opener.closed) {
-        window.opener.postMessage(
-          { ...payload, sentAt: Date.now() },
-          window.location.origin
-        );
+  const sendMessageToOpener = useCallback(
+    payload => {
+      if (typeof window === 'undefined') {
+        return false;
       }
-    } catch (error) {
-      console.warn('[PrivyLoginPopup] Failed to notify opener', error);
-    }
-  }, []);
+      if (!window.opener || window.opener.closed) {
+        return false;
+      }
+      const timestampedPayload = { ...payload, sentAt: Date.now() };
+      let delivered = false;
+
+      openerOrigins.forEach(origin => {
+        try {
+          window.opener.postMessage(timestampedPayload, origin);
+          delivered = true;
+        } catch (error) {
+          console.warn(
+            `[PrivyLoginPopup] Failed to notify opener for origin ${origin}`,
+            error
+          );
+        }
+      });
+
+      return delivered;
+    },
+    [openerOrigins]
+  );
 
   const handlePrivyError = useCallback(
     (fallbackMessage, error) => {
@@ -164,10 +214,15 @@ const PrivyLoginPopupContent = () => {
         if (!token) {
           throw new Error('Missing Privy token');
         }
-        window.opener.postMessage(
-          { type: 'privy-token', token },
-          window.location.origin
-        );
+        const delivered = sendMessageToOpener({
+          type: 'privy-token',
+          token,
+        });
+        if (!delivered) {
+          console.warn(
+            '[PrivyLoginPopup] Privy token dispatched but no opener origins accepted the message.'
+          );
+        }
         setStatus(STATUS.COMPLETED);
         window.close();
         sendMessageToOpener({

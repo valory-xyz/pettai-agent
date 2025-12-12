@@ -363,7 +363,7 @@ class PettAgent:
                         "⏸️  Environment token authentication failed (expired or invalid)"
                     )
                     self.logger.info(
-                        "✨ Waiting for user to login via React app at http://localhost:8716/"
+                        "✨ Waiting for user to login via React app at http://localhost:8716/ (also available via http://127.0.0.1:8716/)"
                     )
                     self.olas.update_websocket_status(
                         connected=False, authenticated=False
@@ -373,7 +373,7 @@ class PettAgent:
             else:
                 self.logger.info("ℹ️  No PRIVY_TOKEN in environment")
                 self.logger.info(
-                    "✨ Waiting for user to login via React app at http://localhost:8716/"
+                    "✨ Waiting for user to login via React app at http://localhost:8716/ (also available via http://127.0.0.1:8716/)"
                 )
                 # Initialize WebSocket client for later use
                 self.websocket_client = PettWebSocketClient(
@@ -2605,7 +2605,7 @@ class PettAgent:
         self.running = True
         self.logger.info("🎯 Pett Agent is now running...")
         self.logger.info(
-            "Waiting the user to enter http://localhost:8716/ to log in and start running successfully the agent"
+            "Waiting the user to enter http://localhost:8716/ (or http://127.0.0.1:8716/) to log in and start running successfully the agent"
         )
 
         try:

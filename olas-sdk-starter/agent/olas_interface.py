@@ -1804,15 +1804,19 @@ class OlasInterface:
             await self.site.start()
 
             self.logger.info(
-                f"🌐 Web server started on http://0.0.0.0:{port} (access via http://localhost:{port})"
+                f"🌐 Web server started on http://0.0.0.0:{port} (access via http://localhost:{port} or http://127.0.0.1:{port})"
             )
             if self.react_enabled:
                 self.logger.info(
-                    f"🎨 React App available at http://localhost:{port}/ (Dashboard at /dashboard)"
+                    f"🎨 React App available at http://localhost:{port}/ or http://127.0.0.1:{port}/ (Dashboard at /dashboard)"
                 )
-                self.logger.info(f"🏥 Health API: http://localhost:{port}/api/health")
+                self.logger.info(
+                    f"🏥 Health API: http://localhost:{port}/api/health (also http://127.0.0.1:{port}/api/health)"
+                )
             else:
-                self.logger.info(f"🏥 Health API: http://localhost:{port}/api/health")
+                self.logger.info(
+                    f"🏥 Health API: http://localhost:{port}/api/health (also http://127.0.0.1:{port}/api/health)"
+                )
 
         except Exception as e:
             self.logger.error(f"Failed to start web server: {e}")

@@ -3,9 +3,11 @@ import React, {
 	useCallback,
 	useContext,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from 'react';
+import { getOriginAliases } from '../utils/originAliases';
 
 const AuthContext = createContext(null);
 const POPUP_FEATURES = 'width=420,height=720,resizable=yes,scrollbars=yes';
@@ -19,6 +21,13 @@ export const AuthProvider = ({ children }) => {
 	const [authError, setAuthError] = useState(null);
 	const [popupStatus, setPopupStatus] = useState(null);
 	const popupRef = useRef(null);
+
+	const allowedOrigins = useMemo(() => {
+		if (typeof window === 'undefined') {
+			return [];
+		}
+		return getOriginAliases(window.location.origin);
+	}, []);
 
 	const cleanupPopup = useCallback(() => {
 		if (popupRef.current) {
@@ -92,7 +101,7 @@ export const AuthProvider = ({ children }) => {
 	useEffect(() => {
 		setReady(true);
 		const handleMessage = event => {
-			if (event.origin !== window.location.origin) return;
+			if (!allowedOrigins.includes(event.origin)) return;
 			const { type, token, status, message, error } = event.data || {};
 
 			if (type === 'privy-token' && token) {
@@ -147,7 +156,7 @@ export const AuthProvider = ({ children }) => {
 
 		window.addEventListener('message', handleMessage);
 		return () => window.removeEventListener('message', handleMessage);
-	}, [authenticateWithBackend, cleanupPopup]);
+	}, [allowedOrigins, authenticateWithBackend, cleanupPopup]);
 
 	useEffect(() => {
 		if (!isPopupOpen) return undefined;

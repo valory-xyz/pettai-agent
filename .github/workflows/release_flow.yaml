@@ -22,6 +22,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Install Pett WebSocket CA bundle
+        run: make install-ca-bundle
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -57,6 +59,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Install Pett WebSocket CA bundle
+        run: make install-ca-bundle
       - name: Enable QEMU emulation # allows multi-arch Docker builds
         uses: docker/setup-qemu-action@v3
       - name: Configure Buildx # multi-arch builder for Docker
@@ -129,6 +133,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Install Pett WebSocket CA bundle
+        run: make install-ca-bundle
       - name: Set up Python
         uses: actions/setup-python@v5
         id: setup-python

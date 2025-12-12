@@ -7,6 +7,7 @@ import ssl
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
+import certifi
 import websockets
 from dotenv import load_dotenv
 
@@ -16,6 +17,9 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+AGENT_CERTS_DIR = Path(__file__).resolve().parent / "certs"
+DEFAULT_WS_CA_FILE = AGENT_CERTS_DIR / "ws_pett_ai_ca.pem"
 
 
 def format_wei_to_eth(wei_value: str | int, decimals: int = 4) -> str:
@@ -178,8 +182,20 @@ class PettWebSocketClient:
                 "close_timeout": 10,
             }
 
-            if self._ssl_context is not None:
-                connect_kwargs["ssl"] = self._ssl_context
+            ssl_context = self._ssl_context
+            if ssl_context is None and self.websocket_url.startswith("wss://"):
+                try:
+                    # Force certifi CA bundle while still honoring runtime overrides
+                    ssl_context = ssl.create_default_context(cafile=certifi.where())
+                except Exception as exc:
+                    logger.error(
+                        "❌ Failed to build SSL context with certifi certificates: %s",
+                        exc,
+                    )
+                    return False
+
+            if ssl_context is not None:
+                connect_kwargs["ssl"] = ssl_context
 
             self.websocket = await websockets.connect(
                 self.websocket_url,
@@ -218,10 +234,17 @@ class PettWebSocketClient:
             return ssl._create_unverified_context()  # type: ignore[attr-defined]
 
         try:
-            context = ssl.create_default_context()
+            context = ssl.create_default_context(cafile=certifi.where())
         except Exception as exc:
-            logger.error(f"❌ Failed to create default SSL context: {exc}")
+            logger.error(
+                f"❌ Failed to create default SSL context using certifi bundle: {exc}"
+            )
             return None
+
+        default_used = False
+        if not ca_file and not ca_path and DEFAULT_WS_CA_FILE.exists():
+            ca_file = str(DEFAULT_WS_CA_FILE)
+            default_used = True
 
         if ca_file or ca_path:
             try:
@@ -231,11 +254,16 @@ class PettWebSocketClient:
                     cafile=str(resolved_file) if resolved_file else None,
                     capath=str(resolved_path) if resolved_path else None,
                 )
-                logger.info(
-                    "🔐 Loaded custom CA bundle for WebSocket verification (file=%s, path=%s)",
-                    resolved_file,
-                    resolved_path,
-                )
+                if default_used:
+                    logger.info(
+                        "🔐 Loaded bundled Pett WebSocket CA from %s", resolved_file
+                    )
+                else:
+                    logger.info(
+                        "🔐 Loaded custom CA bundle for WebSocket verification (file=%s, path=%s)",
+                        resolved_file,
+                        resolved_path,
+                    )
             except Exception as exc:
                 logger.error(f"❌ Failed to load custom CA bundle: {exc}")
 

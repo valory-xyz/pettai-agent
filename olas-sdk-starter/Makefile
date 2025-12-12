@@ -15,6 +15,8 @@ PACKAGES_FILE := packages/packages.json
 HASH_FILE := hash_id
 AGENT_ID_FILE := agent_id
 AGENT_DIR := ./agent
+CA_DIR := $(AGENT_DIR)/certs
+DEFAULT_WS_CA := $(CA_DIR)/ws_pett_ai_ca.pem
 FRONTEND_DIR := frontend
 FRONTEND_BUILD_DIR := $(FRONTEND_DIR)/build
 FRONTEND_BUILD_CMD := yarn --cwd $(FRONTEND_DIR)
@@ -165,6 +167,17 @@ install-deps: clean-cache
 	python -m pip install -r requirements.txt
 	python -m pip install open-autonomy==0.19.11 pyinstaller==6.4.0
 
+.PHONY: install-ca-bundle
+install-ca-bundle:
+	mkdir -p $(CA_DIR)
+	@if [ -n "$$WS_PETT_AI_CA_BUNDLE_B64" ]; then \
+		echo "$$WS_PETT_AI_CA_BUNDLE_B64" | base64 --decode > $(DEFAULT_WS_CA); \
+		chmod 600 $(DEFAULT_WS_CA); \
+		echo "Installed Pett WebSocket CA bundle to $(DEFAULT_WS_CA)"; \
+	else \
+		echo "WS_PETT_AI_CA_BUNDLE_B64 not set; skipping Pett WebSocket CA bundle installation."; \
+	fi
+
 # Write the agent IPFS hash to hash_id
 $(HASH_FILE): $(PACKAGES_FILE)
 	@python -c "import json, pathlib; data=json.load(open('$(PACKAGES_FILE)', encoding='utf-8')); print(next((value for key,value in data.get('dev', {}).items() if key.startswith('agent/')), ''))" > $(HASH_FILE)
@@ -204,9 +217,10 @@ check-frontend-env:
 .PHONY: build-frontend
 build-frontend: check-frontend-env
 	@echo "Building frontend (React Scripts will automatically load .env file)..."
-	$(FRONTEND_BUILD_CMD) install
+	# Ensure devDependencies (e.g. @craco/craco) are available even if NODE_ENV=production
+	cd $(FRONTEND_DIR) && yarn install --production=false
 	rm -rf $(FRONTEND_BUILD_DIR)
-	$(FRONTEND_BUILD_CMD) build
+	cd $(FRONTEND_DIR) && yarn run build
 
 # Platform-agnostic PyInstaller build. Here we use the -p . flag to include the project root in the PYTHONPATH.
 # Also, i did hadd setuptools bc the "jaraco" module was not being included in the default PyInstaller hidden imports (unlike it was seen on the https://github.com/valory-xyz/optimus/blob/main/Makefile)

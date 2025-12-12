@@ -25,8 +25,8 @@
   },
   "scripts": {
     "check-env": "node check-env.js",
-    "prestart": "npm run check-env",
-    "prebuild": "npm run check-env",
+    "prestart": "yarn run check-env",
+    "prebuild": "yarn run check-env",
     "start": "craco start",
     "build": "craco build",
     "test": "craco test",

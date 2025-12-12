@@ -4,6 +4,9 @@ aws_creds
 do_creds
 **/.terraform/*
 
+# Pett WebSocket CA bundle injected during builds
+agent/certs/*.pem
+
 # .tfstate files
 *.tfstate
 *.tfstate.*
@@ -425,3 +428,5 @@ hash_id
 
 ../cron/__pycache__/
 agent/log.txt
+*.pem
+*.b64

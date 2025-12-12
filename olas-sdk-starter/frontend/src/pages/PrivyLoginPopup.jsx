@@ -378,6 +378,12 @@ const PrivyLoginPopupContent = () => {
                 setErrorMessage(null);
               }
             }}
+            onKeyDown={event => {
+              if (event.key === 'Enter' && canSendCode) {
+                event.preventDefault();
+                handleSendCode();
+              }
+            }}
             style={{
               width: '100%',
               padding: '0.75rem 1rem',
@@ -426,6 +432,12 @@ const PrivyLoginPopupContent = () => {
                   setCode(event.target.value);
                   if (showInlineError) {
                     setErrorMessage(null);
+                  }
+                }}
+                onKeyDown={event => {
+                  if (event.key === 'Enter' && canVerifyCode) {
+                    event.preventDefault();
+                    handleVerifyCode();
                   }
                 }}
                 style={{

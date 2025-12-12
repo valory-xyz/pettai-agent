@@ -100,9 +100,10 @@ const MainAppShell = () => (
   </div>
 );
 
-const PrivyLoginRoute = ({ appId }) => (
+const PrivyLoginRoute = ({ appId, clientId }) => (
   <PrivyProvider
     appId={appId}
+    clientId={clientId}
     config={{
       loginMethods: ['email'],
       appearance: {
@@ -118,6 +119,7 @@ const PrivyLoginRoute = ({ appId }) => (
 // Main App component
 function App() {
   const privyAppId = process.env.REACT_APP_PRIVY_APP_ID;
+  const privyClientId = process.env.REACT_APP_PRIVY_CLIENT_ID;
 
   if (!privyAppId) {
     console.error(
@@ -131,7 +133,9 @@ function App() {
       <Routes>
         <Route
           path="/privy-login"
-          element={<PrivyLoginRoute appId={privyAppId} />}
+          element={
+            <PrivyLoginRoute appId={privyAppId} clientId={privyClientId} />
+          }
         />
         <Route path="/*" element={<MainAppShell />} />
       </Routes>

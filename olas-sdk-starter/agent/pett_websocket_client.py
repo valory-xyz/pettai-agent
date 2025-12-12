@@ -3,6 +3,8 @@ import json
 import logging
 import os
 import random
+import ssl
+from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import websockets
@@ -87,6 +89,7 @@ class PettWebSocketClient:
         # Persistent auth token storage for reconnection
         self._saved_auth_token: Optional[str] = None
         self._was_previously_authenticated: bool = False
+        self._ssl_context = self._build_ssl_context()
 
     def set_telemetry_recorder(
         self, recorder: Optional[Callable[[Dict[str, Any], bool, Optional[str]], None]]
@@ -169,8 +172,18 @@ class PettWebSocketClient:
                 return False
 
             logger.info(f"🔌 Connecting to WebSocket: {self.websocket_url}")
+            connect_kwargs: Dict[str, Any] = {
+                "ping_interval": 20,
+                "ping_timeout": 10,
+                "close_timeout": 10,
+            }
+
+            if self._ssl_context is not None:
+                connect_kwargs["ssl"] = self._ssl_context
+
             self.websocket = await websockets.connect(
-                self.websocket_url, ping_interval=20, ping_timeout=10, close_timeout=10
+                self.websocket_url,
+                **connect_kwargs,
             )
             self.connection_established = True
             logger.info("✅ WebSocket connection established")
@@ -184,6 +197,49 @@ class PettWebSocketClient:
         except Exception as e:
             logger.error(f"❌ Failed to connect to WebSocket: {e}")
             return False
+
+    def _build_ssl_context(self) -> Optional[ssl.SSLContext]:
+        """Build SSL context honoring CA overrides and optional verification bypass."""
+        if not self.websocket_url or not self.websocket_url.startswith("wss://"):
+            return None
+
+        skip_verify = (
+            os.getenv("WEBSOCKET_SKIP_SSL_VERIFY", "").strip().lower()
+            in {"1", "true", "yes"}
+        )
+        ca_file = (os.getenv("WEBSOCKET_CA_FILE") or "").strip()
+        ca_path = (os.getenv("WEBSOCKET_CA_PATH") or "").strip()
+
+        if skip_verify:
+            logger.warning(
+                "⚠️ WEBSOCKET_SKIP_SSL_VERIFY enabled - TLS certificate verification "
+                "for Pett WebSocket connections is DISABLED. Use only in trusted environments."
+            )
+            return ssl._create_unverified_context()  # type: ignore[attr-defined]
+
+        try:
+            context = ssl.create_default_context()
+        except Exception as exc:
+            logger.error(f"❌ Failed to create default SSL context: {exc}")
+            return None
+
+        if ca_file or ca_path:
+            try:
+                resolved_file = Path(ca_file).expanduser() if ca_file else None
+                resolved_path = Path(ca_path).expanduser() if ca_path else None
+                context.load_verify_locations(
+                    cafile=str(resolved_file) if resolved_file else None,
+                    capath=str(resolved_path) if resolved_path else None,
+                )
+                logger.info(
+                    "🔐 Loaded custom CA bundle for WebSocket verification (file=%s, path=%s)",
+                    resolved_file,
+                    resolved_path,
+                )
+            except Exception as exc:
+                logger.error(f"❌ Failed to load custom CA bundle: {exc}")
+
+        return context
 
     async def disconnect(self) -> None:
         """Close WebSocket connection."""

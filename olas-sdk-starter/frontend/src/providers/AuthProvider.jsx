@@ -20,6 +20,7 @@ export const AuthProvider = ({ children }) => {
 	const [authFailed, setAuthFailed] = useState(false);
 	const [authError, setAuthError] = useState(null);
 	const [popupStatus, setPopupStatus] = useState(null);
+	const [sessionResetSeq, setSessionResetSeq] = useState(0);
 	const popupRef = useRef(null);
 
 	const allowedOrigins = useMemo(() => {
@@ -27,6 +28,34 @@ export const AuthProvider = ({ children }) => {
 			return [];
 		}
 		return getOriginAliases(window.location.origin);
+	}, []);
+
+	const clearClientAuthStorage = useCallback(() => {
+		if (typeof window === 'undefined') return;
+		const clearFromStorage = storage => {
+			if (!storage) return;
+			try {
+				const keysToRemove = [];
+				for (let i = 0; i < storage.length; i += 1) {
+					const key = storage.key(i);
+					if (!key) continue;
+					const lower = key.toLowerCase();
+					if (
+						lower.includes('privy') ||
+						lower.includes('pett') ||
+						lower.includes('auth')
+					) {
+						keysToRemove.push(key);
+					}
+				}
+				keysToRemove.forEach(key => storage.removeItem(key));
+			} catch (error) {
+				console.warn('[Auth] Unable to clear storage during logout', error);
+			}
+		};
+
+		clearFromStorage(window.localStorage);
+		clearFromStorage(window.sessionStorage);
 	}, []);
 
 	const cleanupPopup = useCallback(() => {
@@ -57,6 +86,7 @@ export const AuthProvider = ({ children }) => {
 
 			if (!response.ok || data?.success !== true) {
 				console.error('[Auth] Backend login failed:', data);
+				setWsPet(null);
 				setAuthFailed(true);
 				setAuthenticated(false);
 				const backendMessage =
@@ -77,6 +107,7 @@ export const AuthProvider = ({ children }) => {
 			setAuthFailed(false);
 			setAuthError(null);
 			setAuthenticated(true);
+			setSessionResetSeq(0);
 			setPopupStatus({
 				status: 'completed',
 				message: 'Authenticated successfully. Connecting to your Pett agent…',
@@ -84,6 +115,7 @@ export const AuthProvider = ({ children }) => {
 			});
 		} catch (error) {
 			console.error('[Auth] Error sending Privy token:', error?.message || error);
+			setWsPet(null);
 			setAuthFailed(true);
 			setAuthenticated(false);
 			const backendErrorMessage =
@@ -99,7 +131,8 @@ export const AuthProvider = ({ children }) => {
 	}, []);
 
 	useEffect(() => {
-		setReady(true);
+		let isMounted = true;
+
 		const handleMessage = event => {
 			if (!allowedOrigins.includes(event.origin)) return;
 			const { type, token, status, message, error } = event.data || {};
@@ -154,8 +187,41 @@ export const AuthProvider = ({ children }) => {
 			}
 		};
 
+		const restoreSessionIfAvailable = async () => {
+			try {
+				const response = await fetch('/api/health');
+				if (!response.ok) {
+					throw new Error(`Health check failed with status ${response.status}`);
+				}
+				const data = await response.json();
+				const isAuthenticated =
+					Boolean(data?.websocket?.authenticated) ||
+					Boolean(data?.pet?.connected) ||
+					Boolean(data?.websocket?.auth_token_present);
+
+				if (!isAuthenticated || !isMounted) return;
+
+				setAuthenticated(true);
+				setAuthFailed(false);
+				setAuthError(null);
+				setSessionResetSeq(0);
+				setWsPet(prev => prev || data?.pet?.name || 'Connected');
+			} catch (error) {
+				console.warn('[Auth] Unable to restore existing session from backend:', error);
+			} finally {
+				if (isMounted) {
+					setReady(true);
+				}
+			}
+		};
+
 		window.addEventListener('message', handleMessage);
-		return () => window.removeEventListener('message', handleMessage);
+		restoreSessionIfAvailable();
+
+		return () => {
+			isMounted = false;
+			window.removeEventListener('message', handleMessage);
+		};
 	}, [allowedOrigins, authenticateWithBackend, cleanupPopup]);
 
 	useEffect(() => {
@@ -171,8 +237,13 @@ export const AuthProvider = ({ children }) => {
 	}, [isPopupOpen]);
 
 	const login = useCallback(() => {
-		const popupUrl = new URL('/privy-login', window.location.origin).toString();
-		const popup = window.open(popupUrl, 'privy-login', POPUP_FEATURES);
+		const popupUrl = new URL('/privy-login', window.location.origin);
+		if (sessionResetSeq > 0) {
+			popupUrl.searchParams.set('forceLogout', '1');
+			popupUrl.searchParams.set('resetSeq', String(sessionResetSeq));
+		}
+
+		const popup = window.open(popupUrl.toString(), 'privy-login', POPUP_FEATURES);
 		if (popup) {
 			popupRef.current = popup;
 			setIsPopupOpen(true);
@@ -193,7 +264,7 @@ export const AuthProvider = ({ children }) => {
 			});
 			setAuthError(message);
 		}
-	}, []);
+	}, [sessionResetSeq]);
 
 	const logout = useCallback(async () => {
 		try {
@@ -201,12 +272,15 @@ export const AuthProvider = ({ children }) => {
 		} catch (e) {
 			console.warn('[Auth] Backend logout failed (continuing):', e);
 		}
+		clearClientAuthStorage();
+		setSessionResetSeq(seq => seq + 1);
+		cleanupPopup();
 		setWsPet(null);
 		setAuthFailed(false);
 		setAuthError(null);
 		setAuthenticated(false);
 		setPopupStatus(null);
-	}, []);
+	}, [cleanupPopup, clearClientAuthStorage]);
 
 	const value = {
 		login,

@@ -1100,9 +1100,6 @@ class OlasInterface:
 
         staking_program_id = _lookup("STAKING_PROGRAM_ID", "SERVICE_STAKING_PROGRAM_ID")
         staking_contract_address = _lookup(
-            "STAKING_CONTRACT_ADDRESS",
-            "STAKING_PROXY_ADDRESS",
-            "SERVICE_STAKING_CONTRACT_ADDRESS",
             "SERVICE_STAKING_PROXY_ADDRESS",
         )
         staking_token_address = _lookup(
@@ -1779,9 +1776,7 @@ class OlasInterface:
                 self.app.router.add_get("/login", self._serve_react_app)
                 self.app.router.add_get("/login/{tail:.*}", self._serve_react_app)
                 self.app.router.add_get("/privy-login", self._serve_react_app)
-                self.app.router.add_get(
-                    "/privy-login/{tail:.*}", self._serve_react_app
-                )
+                self.app.router.add_get("/privy-login/{tail:.*}", self._serve_react_app)
                 self.app.router.add_get("/dashboard", self._serve_react_app)
                 self.app.router.add_get("/dashboard/{tail:.*}", self._serve_react_app)
                 self.app.router.add_get("/action-history", self._serve_react_app)

@@ -154,6 +154,15 @@ class StakingCheckpointClient:
             None, self._get_epoch_kpis_sync, force_refresh
         )
 
+    async def get_next_epoch_end_timestamp(self) -> Optional[int]:
+        """Return the timestamp when the current staking epoch ends."""
+        if not self.is_enabled:
+            return None
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, self._get_next_reward_checkpoint_timestamp
+        )
+
     def _call_checkpoint_if_needed_sync(self, force: bool = False) -> Optional[str]:
         """Synchronous implementation invoked from the executor."""
         if not self.is_enabled:

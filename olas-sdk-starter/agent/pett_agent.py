@@ -45,7 +45,7 @@ class PettAgent:
     WAKE_ENERGY_THRESHOLD = 65.0
     POST_KPI_SLEEP_TRIGGER = 85.0
     POST_KPI_SLEEP_TARGET = 80.0
-    REQUIRED_ACTIONS_PER_EPOCH = 8
+    REQUIRED_ACTIONS_PER_EPOCH = 8  # 8 IN THE STAKING CONTRACT. TODO ideally we should fetch this directly from the staking contract.
     CRITICAL_CORE_STATS: Tuple[str, ...] = ("hunger", "health", "hygiene", "happiness")
     CRITICAL_STAT_THRESHOLD = 5.0
     ECONOMY_BALANCE_THRESHOLD = 350.0
@@ -100,10 +100,10 @@ class PettAgent:
         self.websocket_url = self.olas.get_env_var("WEBSOCKET_URL", "wss://ws.pett.ai")
 
         self.logger.info("🐾 Pett Agent initialized")
-        # Action scheduler configuration
+        # Action scheduler config uration
         self.action_interval_minutes: float = (
-            7 if is_production else 1
-        )  # should be 7 minutes in prod
+            7.0  # 7 minutes between actions, should be 7 in prod
+        )
         self.next_action_at: Optional[datetime] = None
         self.last_action_at: Optional[datetime] = None
         self._checkpoint_check_interval: timedelta = timedelta(minutes=7)
@@ -121,9 +121,13 @@ class PettAgent:
         self._last_known_epoch_end_ts: Optional[int] = None
         self._last_checkpointed_epoch_end_ts: Optional[int] = None
         self._epoch_length_seconds: Optional[int] = None
+        # Track epoch end for on-chain recording decisions (separate from checkpoint tracking)
+        self._last_recorded_epoch_end_ts: Optional[int] = None
         tracker_path = Path("logs") / "daily_action_state.json"
         self._daily_action_tracker = DailyActionTracker(
-            tracker_path, required_actions=self.REQUIRED_ACTIONS_PER_EPOCH
+            tracker_path,
+            required_actions=self.REQUIRED_ACTIONS_PER_EPOCH,
+            reset_on_start=True,
         )
         self._economy_mode_active: bool = False
         self._owned_consumables_cache: Dict[str, "PettAgent.OwnedConsumable"] = {}
@@ -143,6 +147,39 @@ class PettAgent:
                 "remaining": 0,
                 "actions": [],
             }
+
+    def _get_epoch_change_checker_callback(self) -> Callable[[], Awaitable[bool]]:
+        """Return an async callback for checking epoch changes.
+
+        This callback is meant to be set on the websocket client so it can
+        check for epoch changes when it's about to skip on-chain recording.
+        """
+
+        async def check_epoch_change() -> bool:
+            return await self._check_and_handle_epoch_change()
+
+        return check_epoch_change
+
+    def _get_onchain_success_recorder_callback(self) -> Callable[[str], None]:
+        """Return a callback for recording successful on-chain actions.
+
+        This callback is called only when an on-chain action recording
+        actually succeeds, ensuring the counter only tracks verified txs.
+        """
+
+        def record_success(action_name: str) -> None:
+            self._daily_action_tracker.record_action(action_name)
+            completed = self._daily_action_tracker.actions_completed()
+            remaining = self._daily_action_tracker.actions_remaining()
+            self.logger.info(
+                "On-chain tx verified for %s — now %d/%d verified txs, %d remaining to unlock staking",
+                action_name,
+                completed,
+                self.REQUIRED_ACTIONS_PER_EPOCH,
+                remaining,
+            )
+
+        return record_success
 
     # TypedDicts for pet data shape
     class PetTokensDict(TypedDict, total=False):
@@ -210,6 +247,12 @@ class PettAgent:
                 try:
                     self.websocket_client.set_action_recorder(
                         self.olas.get_action_recorder()
+                    )
+                    self.websocket_client.set_epoch_change_checker(
+                        self._get_epoch_change_checker_callback()
+                    )
+                    self.websocket_client.set_onchain_success_recorder(
+                        self._get_onchain_success_recorder_callback()
                     )
                     try:
                         recorder = self.olas.get_action_recorder()
@@ -382,6 +425,12 @@ class PettAgent:
                 try:
                     self.websocket_client.set_action_recorder(
                         self.olas.get_action_recorder()
+                    )
+                    self.websocket_client.set_epoch_change_checker(
+                        self._get_epoch_change_checker_callback()
+                    )
+                    self.websocket_client.set_onchain_success_recorder(
+                        self._get_onchain_success_recorder_callback()
                     )
                     try:
                         recorder2 = self.olas.get_action_recorder()
@@ -588,6 +637,12 @@ class PettAgent:
                 self.websocket_client.set_action_recorder(
                     self.olas.get_action_recorder()
                 )
+                self.websocket_client.set_epoch_change_checker(
+                    self._get_epoch_change_checker_callback()
+                )
+                self.websocket_client.set_onchain_success_recorder(
+                    self._get_onchain_success_recorder_callback()
+                )
                 try:
                     recorder = self.olas.get_action_recorder()
                     if recorder and recorder.is_enabled:
@@ -651,6 +706,12 @@ class PettAgent:
             try:
                 self.websocket_client.set_action_recorder(
                     self.olas.get_action_recorder()
+                )
+                self.websocket_client.set_epoch_change_checker(
+                    self._get_epoch_change_checker_callback()
+                )
+                self.websocket_client.set_onchain_success_recorder(
+                    self._get_onchain_success_recorder_callback()
                 )
             except Exception:
                 pass
@@ -1993,9 +2054,14 @@ class PettAgent:
             self.logger.debug(f"Pet update handler encountered exception: {e}")
 
     async def _record_passive_sleep_action(self) -> None:
-        """Record a synthetic SLEEP action without toggling the pet's state."""
+        """Record a synthetic SLEEP action without toggling the pet's state.
+
+        Note: This does NOT increment the staking counter because there's no
+        on-chain recording for passive sleep (verification unavailable without
+        actually toggling the pet's state).
+        """
         self.logger.info("🧾 Recording passive SLEEP action while maintaining rest")
-        self._daily_action_tracker.record_action("SLEEP")
+        # Counter NOT incremented - only successful on-chain recordings count
         await self._log_action_progress("SLEEP")
         recorder = self.olas.get_action_recorder()
         if recorder and recorder.is_enabled:
@@ -2047,8 +2113,64 @@ class PettAgent:
         remaining = self._daily_action_tracker.actions_remaining()
         return (completed, required, remaining, False), None
 
+    async def _check_and_handle_epoch_change(self) -> bool:
+        """Check if the staking epoch has changed and reset the action tracker if needed.
+
+        Returns True if the epoch changed and the tracker was reset.
+        """
+        client = self.olas.get_staking_checkpoint_client()
+        if not client or not client.is_enabled:
+            return False
+
+        try:
+            current_epoch_end = await client.get_next_epoch_end_timestamp()
+        except Exception as exc:
+            self.logger.debug("Failed to fetch next epoch end timestamp: %s", exc)
+            return False
+
+        if current_epoch_end is None:
+            return False
+
+        last_known = self._last_recorded_epoch_end_ts
+        now_ts = int(time.time())
+
+        # First time tracking - just store the value
+        if last_known is None:
+            self._last_recorded_epoch_end_ts = current_epoch_end
+            return False
+
+        # Check if epoch has changed (epoch end timestamp moved forward significantly)
+        # This happens when: the old epoch ended and a new epoch started
+        if current_epoch_end > last_known:
+            self.logger.info(
+                "🔄 Staking epoch changed: epoch end moved from %s to %s (delta: %ds). "
+                "Resetting on-chain action counter.",
+                last_known,
+                current_epoch_end,
+                current_epoch_end - last_known,
+            )
+            self._last_recorded_epoch_end_ts = current_epoch_end
+            self._daily_action_tracker.reset_for_new_epoch(str(current_epoch_end))
+            return True
+
+        # Also check if we've passed the epoch end and need to refresh
+        if now_ts > last_known:
+            # We've passed the last known epoch end, try to get the new one
+            if current_epoch_end != last_known:
+                self.logger.info(
+                    "🔄 Staking epoch boundary crossed: was %s, now %s. "
+                    "Resetting on-chain action counter.",
+                    last_known,
+                    current_epoch_end,
+                )
+                self._last_recorded_epoch_end_ts = current_epoch_end
+                self._daily_action_tracker.reset_for_new_epoch(str(current_epoch_end))
+                return True
+
+        return False
+
     async def _log_action_progress(self, action_name: str) -> None:
-        """Log staking-aware counters or explain why they are unavailable."""
+        """Log staking-aware counters showing verified on-chain txs."""
         progress, reason = await self._get_epoch_action_progress(
             force_refresh=True, allow_local_fallback=False
         )
@@ -2065,10 +2187,12 @@ class PettAgent:
             if fallback_progress:
                 f_completed, f_required, f_remaining, using_staking = fallback_progress
                 scope_label = (
-                    "this epoch (cached)" if using_staking else "today (local tracker)"
+                    "verified on-chain txs this epoch (cached)"
+                    if using_staking
+                    else "verified on-chain txs (local tracker)"
                 )
                 self.logger.info(
-                    "📋 Action %s recorded (%d/%d %s, %d remaining) — pending staking KPIs",
+                    "📋 Action %s — %d/%d %s, %d remaining to unlock staking",
                     action_name,
                     f_completed,
                     f_required,
@@ -2077,7 +2201,7 @@ class PettAgent:
                 )
             else:
                 self.logger.info(
-                    "📋 Action %s recorded — pending staking KPIs", action_name
+                    "📋 Action %s — staking counter pending KPIs", action_name
                 )
             return
 
@@ -2089,7 +2213,7 @@ class PettAgent:
             )
             return
         self.logger.info(
-            "📋 On-chain action %s recorded (%d/%d this epoch, %d remaining)",
+            "📋 Action %s — %d/%d verified on-chain txs this epoch, %d remaining to unlock staking",
             action_name,
             completed,
             required,
@@ -2099,31 +2223,48 @@ class PettAgent:
     async def _record_resting_sleep_action(self, client: PettWebSocketClient) -> bool:
         """Emit a verified SLEEP action while keeping the pet asleep overall."""
         self.logger.info(
-            "🧾 Passive SLEEP requires verification; briefly toggling rest to submit on-chain record"
+            "🧾 Passive SLEEP requires verification; briefly waking then re-sleeping to submit on-chain record"
         )
-        temporarily_awake = False
-        try:
-            wake_success = await client.sleep_pet(record_on_chain=False)
-        except Exception as exc:
-            self.logger.warning(
-                "⚠️ Failed to pulse wake before passive SLEEP verification: %s", exc
-            )
-            return False
-        if not wake_success:
-            self.logger.warning(
-                "⚠️ Unable to wake pet before passive SLEEP verification; skipping on-chain record"
-            )
-            return False
 
-        temporarily_awake = True
-        await asyncio.sleep(0.5)
-        success = await self._execute_action_with_tracking("SLEEP", client.sleep_pet)
-        if not success and temporarily_awake:
+        async def _wake_then_sleep() -> bool:
             try:
+                woke = await client.sleep_pet(record_on_chain=False)
+            except Exception as exc:
+                self.logger.warning(
+                    "⚠️ Failed to pulse wake before passive SLEEP verification: %s",
+                    exc,
+                )
+                return False
+            if not woke:
+                self.logger.warning(
+                    "⚠️ Unable to wake pet before passive SLEEP verification; skipping on-chain record"
+                )
+                return False
+
+            await asyncio.sleep(1.5)
+            return await self._execute_action_with_tracking(
+                "SLEEP", lambda: client.sleep_pet(record_on_chain=True)
+            )
+
+        # Try up to two pulses to obtain a verified SLEEP while keeping rest
+        for attempt in range(2):
+            success = await _wake_then_sleep()
+            if success:
+                return True
+            self.logger.debug(
+                "Passive SLEEP verification attempt %d failed; ensuring pet remains asleep",
+                attempt + 1,
+            )
+            try:
+                await asyncio.sleep(0.2)
                 await client.sleep_pet(record_on_chain=False)
             except Exception:
                 pass
-        return success
+
+        self.logger.warning(
+            "⚠️ Unable to obtain verified SLEEP while resting after retries"
+        )
+        return False
 
     async def _execute_action_with_tracking(
         self,
@@ -2148,8 +2289,9 @@ class PettAgent:
         ):
             success = True
 
+        # Note: counter increment moved to websocket client's _onchain_success_recorder
+        # Only successful on-chain recordings count toward the staking threshold
         if success:
-            self._daily_action_tracker.record_action(normalized_name)
             await self._log_action_progress(normalized_name)
 
         try:
@@ -2332,7 +2474,23 @@ class PettAgent:
         energy = self._to_float(stats.get("energy", 0))
         hunger = self._to_float(stats.get("hunger", 0))
         health = self._to_float(stats.get("health", 0))
+
+        # Check if staking epoch changed before determining on-chain recording
+        epoch_changed = await self._check_and_handle_epoch_change()
+        if epoch_changed:
+            self.logger.info(
+                "📊 Epoch change detected; on-chain recording re-enabled for new epoch"
+            )
+
         actions_remaining = self._daily_action_tracker.actions_remaining()
+        recorder = self.olas.get_action_recorder()
+        recorder_enabled = bool(recorder and recorder.is_enabled)
+        try:
+            should_record_on_chain = actions_remaining > 0
+            if hasattr(client, "set_onchain_recording_enabled"):
+                client.set_onchain_recording_enabled(should_record_on_chain)
+        except Exception:
+            pass
         kpi_met = actions_remaining == 0
         critical_threshold = self.CRITICAL_STAT_THRESHOLD
         stats_critical = self._all_core_stats_below_threshold(stats, critical_threshold)
@@ -2464,10 +2622,15 @@ class PettAgent:
             else:
                 if sleeping:
                     self.logger.info(
-                        "😴 KPI threshold met; keeping pet asleep to rebuild energy (%.1f%%)",
+                        "😴 KPI threshold met; waking briefly to register sleep action (energy %.1f%%)",
                         energy,
                     )
-                    return
+                    recorded = await self._record_resting_sleep_action(client)
+                    if recorded:
+                        return
+                    self.logger.debug(
+                        "⚠️ Passive SLEEP record while resting failed; will continue scheduling"
+                    )
                 self.logger.info(
                     "😴 KPI threshold met; scheduling additional sleep to rebuild energy (%.1f%%)",
                     energy,
@@ -2510,7 +2673,12 @@ class PettAgent:
                     if not kpi_met:
                         recorded = await self._record_resting_sleep_action(client)
                         if not recorded:
-                            await self._record_passive_sleep_action()
+                            if recorder_enabled:
+                                self.logger.warning(
+                                    "🧾 Verified SLEEP unavailable while resting; will retry without counting progress"
+                                )
+                            else:
+                                await self._record_passive_sleep_action()
                     return
 
         # Priority 0: low health -> attempt recovery
@@ -2524,7 +2692,7 @@ class PettAgent:
         if not kpi_met:
             completed = self._daily_action_tracker.actions_completed()
             self.logger.info(
-                "📋 Structured plan active (%d/%d complete, %d remaining)",
+                "📋 Structured plan active (%d/%d verified on-chain txs, %d remaining to unlock staking)",
                 completed,
                 self.REQUIRED_ACTIONS_PER_EPOCH,
                 actions_remaining,

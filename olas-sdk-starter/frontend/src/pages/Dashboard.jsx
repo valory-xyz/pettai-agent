@@ -29,7 +29,7 @@ const formatTimestampDisplay = isoString => {
 const LAST_PET_MESSAGES_STORAGE_KEY = 'pett:lastPetMessages';
 
 const Dashboard = () => {
-	const { authenticated, logout } = useAuth();
+	const { authenticated, ready, logout } = useAuth();
 	const navigate = useNavigate();
 	const handleLogout = useCallback(async () => {
 		try {
@@ -51,6 +51,10 @@ const Dashboard = () => {
 	const [animations, setAnimations] = useState([]);
 	const [previousAipBalance, setPreviousAipBalance] = useState(null);
 	const animationTimeoutsRef = useRef([]);
+	const authTokenPresentRef = useRef(false);
+	const consecutiveHealthFailuresRef = useRef(0);
+	const healthFailureHandledRef = useRef(false);
+	const authStateRef = useRef(authenticated);
 	const fastFloatDown = false;
 	// chat history disabled
 
@@ -65,10 +69,15 @@ const Dashboard = () => {
 	}, []);
 
 	useEffect(() => {
+		if (!ready) return;
 		if (!authenticated) {
 			navigate('/login');
 		}
-	}, [authenticated, navigate]);
+	}, [authenticated, navigate, ready]);
+
+	useEffect(() => {
+		authStateRef.current = authenticated;
+	}, [authenticated]);
 
 	useEffect(() => {
 		const timer = setTimeout(() => setIsAnimating(false), 600);
@@ -89,11 +98,28 @@ const Dashboard = () => {
 				if (!res.ok) throw new Error(`Health endpoint returned ${res.status}`);
 				const data = await res.json();
 				setHealthData(data);
+				authTokenPresentRef.current = Boolean(data?.websocket?.auth_token_present);
+				consecutiveHealthFailuresRef.current = 0;
+				healthFailureHandledRef.current = false;
 				setError(null);
 			} catch (err) {
 				if (err.name === 'AbortError') return;
 				console.error('[Dashboard] Failed to fetch health data', err);
-				setError('Agent UI lost sync with the backend. Retrying…');
+				const failures = consecutiveHealthFailuresRef.current + 1;
+				consecutiveHealthFailuresRef.current = failures;
+
+				// Show connection warning after 5 failures - do NOT logout or redirect
+				// The user is still logged in, it's just a WebSocket/backend connection issue
+				if (failures >= 5 && !healthFailureHandledRef.current) {
+					healthFailureHandledRef.current = true;
+					setError("Connection to Pett.ai servers lost. The agent will keep retrying…");
+					console.warn('[Dashboard] Connection issues detected after 5 failures - NOT logging out');
+					return;
+				}
+
+				if (failures >= 2) {
+					setError('Agent connection unstable. Retrying…');
+				}
 			}
 		};
 

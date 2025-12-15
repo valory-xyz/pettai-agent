@@ -27,10 +27,10 @@ const LoginPage = () => {
   }, [login]);
 
   useEffect(() => {
-    if (wsPet !== null) {
+		if (authenticated && wsPet !== null) {
       navigate('/all-set', { replace: true });
     }
-  }, [wsPet, navigate]);
+	}, [authenticated, wsPet, navigate]);
 
   if (authenticated && wsPet === null) {
     return (

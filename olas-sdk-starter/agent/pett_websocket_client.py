@@ -5,7 +5,7 @@ import os
 import random
 import ssl
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import certifi
 import websockets
@@ -81,6 +81,8 @@ class PettWebSocketClient:
         self._telemetry_recorder: Optional[
             Callable[[Dict[str, Any], bool, Optional[str]], None]
         ] = None
+        # Enable/disable on-chain recordAction scheduling globally
+        self._onchain_recording_enabled: bool = True
         # Pending nonce -> future mapping for correlating responses
         self._pending_nonces: Dict[str, asyncio.Future[Dict[str, Any]]] = {}
         if not self.privy_token:
@@ -94,6 +96,10 @@ class PettWebSocketClient:
         self._saved_auth_token: Optional[str] = None
         self._was_previously_authenticated: bool = False
         self._ssl_context = self._build_ssl_context()
+        # Callback to check for staking epoch changes when about to skip recording
+        self._epoch_change_checker: Optional[Callable[[], Awaitable[bool]]] = None
+        # Callback to record successful on-chain action (for staking counter)
+        self._onchain_success_recorder: Optional[Callable[[str], None]] = None
 
     def set_telemetry_recorder(
         self, recorder: Optional[Callable[[Dict[str, Any], bool, Optional[str]], None]]
@@ -105,10 +111,54 @@ class PettWebSocketClient:
         """Attach the action recorder used for on-chain reporting."""
         self._action_recorder = recorder
 
+    def set_onchain_recording_enabled(self, enabled: bool) -> None:
+        """Globally enable/disable on-chain recordAction submissions."""
+        self._onchain_recording_enabled = bool(enabled)
+
+    def set_epoch_change_checker(
+        self, checker: Optional[Callable[[], Awaitable[bool]]]
+    ) -> None:
+        """Set callback to check for staking epoch changes.
+
+        The callback should return True if the epoch changed and the action
+        tracker was reset (meaning recording should be re-enabled).
+        """
+        self._epoch_change_checker = checker
+
+    def set_onchain_success_recorder(
+        self, recorder: Optional[Callable[[str], None]]
+    ) -> None:
+        """Set callback to record successful on-chain action submissions.
+
+        The callback receives the action name and should increment the staking
+        counter only when on-chain recording actually succeeds.
+        """
+        self._onchain_success_recorder = recorder
+
     def _schedule_verified_record_action(
         self, action_type: str, verification: Dict[str, Any]
     ) -> None:
         """Schedule an asynchronous verified recordAction transaction if available."""
+        # Always check for epoch changes on every action
+        if self._epoch_change_checker:
+            try:
+                loop = asyncio.get_running_loop()
+                # Schedule the epoch check and conditional recording
+                loop.create_task(
+                    self._check_epoch_and_maybe_record(action_type, verification)
+                )
+                return
+            except RuntimeError:
+                pass
+
+        # Fallback if no epoch checker is set
+        if not self._onchain_recording_enabled:
+            logger.info(
+                "Already have 8+ verified on-chain txs (staking threshold met); "
+                "skipping on-chain recording for %s",
+                action_type,
+            )
+            return
         if not self._action_recorder:
             logger.info(
                 "🧾 Skipping on-chain record for %s: action recorder not configured",
@@ -145,6 +195,87 @@ class PettWebSocketClient:
                 )
 
         task.add_done_callback(_handle_result)
+
+    async def _check_epoch_and_maybe_record(
+        self, action_type: str, verification: Dict[str, Any]
+    ) -> None:
+        """Check if epoch changed and record action accordingly.
+
+        This is called on EVERY action to ensure we detect epoch changes
+        regardless of current action count.
+        """
+        # First, check if the staking epoch has changed
+        epoch_changed = False
+        if self._epoch_change_checker:
+            try:
+                epoch_changed = await self._epoch_change_checker()
+            except Exception as exc:
+                logger.debug("Failed to check for epoch change: %s", exc)
+
+        if epoch_changed:
+            logger.info(
+                "🔄 Epoch changed! Re-enabling on-chain recording for %s",
+                action_type,
+            )
+            self._onchain_recording_enabled = True
+
+        # Now decide whether to record based on current state
+        if not self._onchain_recording_enabled:
+            logger.info(
+                "⏭️ Already have 8+ verified on-chain txs (staking threshold met); "
+                "skipping on-chain recording for %s",
+                action_type,
+            )
+            return
+
+        # Proceed with recording
+        if not self._action_recorder:
+            logger.info(
+                "🧾 Skipping on-chain record for %s: action recorder not configured",
+                action_type,
+            )
+            return
+        if not self._action_recorder.is_enabled:
+            logger.info(
+                "🧾 Skipping on-chain record for %s: action recorder disabled (missing key/RPC)",
+                action_type,
+            )
+            return
+
+        normalized_type = (action_type or "").upper()
+        if not normalized_type:
+            return
+
+        try:
+            success = await self._action_recorder.record_action_verified(
+                normalized_type, verification
+            )
+            if success:
+                logger.info(
+                    "✅ On-chain recording succeeded for %s; incrementing staking counter",
+                    normalized_type,
+                )
+                # Call the success recorder to increment the counter
+                if self._onchain_success_recorder:
+                    try:
+                        self._onchain_success_recorder(normalized_type)
+                    except Exception as rec_exc:
+                        logger.debug(
+                            "Failed to call onchain success recorder for %s: %s",
+                            normalized_type,
+                            rec_exc,
+                        )
+            else:
+                logger.info(
+                    "⚠️ On-chain recording failed for %s; counter NOT incremented",
+                    normalized_type,
+                )
+        except Exception as exc:
+            logger.debug(
+                "Failed to record action for %s: %s",
+                action_type,
+                exc,
+            )
 
     def _generate_nonce(self) -> str:
         """Generate a simple random numeric nonce as a string."""
@@ -219,10 +350,11 @@ class PettWebSocketClient:
         if not self.websocket_url or not self.websocket_url.startswith("wss://"):
             return None
 
-        skip_verify = (
-            os.getenv("WEBSOCKET_SKIP_SSL_VERIFY", "").strip().lower()
-            in {"1", "true", "yes"}
-        )
+        skip_verify = os.getenv("WEBSOCKET_SKIP_SSL_VERIFY", "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+        }
         ca_file = (os.getenv("WEBSOCKET_CA_FILE") or "").strip()
         ca_path = (os.getenv("WEBSOCKET_CA_PATH") or "").strip()
 
@@ -370,7 +502,10 @@ class PettWebSocketClient:
                 # logger.info(f"🔐 Authentication result: {auth_result}")
                 return auth_result
             except asyncio.TimeoutError:
-                logger.error(f"❌ Authentication timed out after {timeout} seconds")
+                # Timeout on single attempt is not critical - caller will handle retries
+                logger.debug(
+                    f"⏱️ Authentication response not received within {timeout}s"
+                )
                 return False
 
         except Exception as e:
@@ -453,7 +588,7 @@ class PettWebSocketClient:
         return True, response
 
     async def connect_and_authenticate(
-        self, max_retries: int = 3, auth_timeout: int = 10
+        self, max_retries: int = 5, auth_timeout: int = 20
     ) -> bool:
         """Connect to WebSocket and authenticate using Privy token with retry logic."""
         # Check if we have a saved auth token to reuse
@@ -498,7 +633,15 @@ class PettWebSocketClient:
                     token_to_use, timeout=auth_timeout
                 )
                 if not auth_success:
-                    logger.warning(f"❌ Authentication attempt {attempt + 1} failed")
+                    # Only warn on later attempts - first few failures are common during reconnection
+                    if attempt >= 3:
+                        logger.warning(
+                            f"❌ Authentication attempt {attempt + 1}/{max_retries} failed"
+                        )
+                    else:
+                        logger.info(
+                            f"🔄 Authentication attempt {attempt + 1}/{max_retries} - retrying..."
+                        )
                     await self.disconnect()
 
                     # If we were using a saved token and it failed, clear it
@@ -1025,63 +1168,100 @@ class PettWebSocketClient:
         self.message_handlers[message_type].append(handler)
 
     # Pet action methods
-    async def rub_pet(self) -> bool:
+    async def rub_pet(self, *, record_on_chain: Optional[bool] = None) -> bool:
         """Rub the pet."""
+        record = (
+            self._onchain_recording_enabled
+            if record_on_chain is None
+            else bool(record_on_chain)
+        )
         success, response = await self._send_and_wait(
-            "RUB", {}, timeout=10, verify=True
+            "RUB", {}, timeout=10, verify=record
         )
         verification = self._extract_verification(response)
         if success or (not success and self._contains_already_clean_error(response)):
-            if verification:
+            if verification and record:
                 logger.info(
                     "🧾 RUB: submitting verified on-chain record (success or already clean)"
                 )
                 self._schedule_verified_record_action("RUB", verification)
         return bool(success)
 
-    async def shower_pet(self) -> bool:
+    async def shower_pet(self, *, record_on_chain: Optional[bool] = None) -> bool:
         """Give the pet a shower."""
+        record = (
+            self._onchain_recording_enabled
+            if record_on_chain is None
+            else bool(record_on_chain)
+        )
         success, response = await self._send_and_wait(
-            "SHOWER", {}, timeout=10, verify=True
+            "SHOWER", {}, timeout=10, verify=record
         )
         verification = self._extract_verification(response)
         if success or (not success and self._contains_already_clean_error(response)):
-            if verification:
+            if verification and record:
                 logger.info(
                     "🧾 SHOWER: submitting verified on-chain record (success or already clean)"
                 )
                 self._schedule_verified_record_action("SHOWER", verification)
         return bool(success)
 
-    async def sleep_pet(self, record_on_chain: bool = True) -> bool:
+    async def sleep_pet(self, record_on_chain: Optional[bool] = None) -> bool:
         """Put the pet to sleep."""
-        success, response = await self._send_and_wait(
-            "SLEEP", {}, timeout=10, verify=record_on_chain
+        record = (
+            self._onchain_recording_enabled
+            if record_on_chain is None
+            else bool(record_on_chain)
         )
-        if success:
-            logger.info("✅ SLEEP action confirmed by server")
-            if record_on_chain:
-                verification = self._extract_verification(response)
-                if verification:
-                    logger.info("📗 Submitting verified SLEEP action on-chain")
-                    self._schedule_verified_record_action("SLEEP", verification)
-        return bool(success)
-
-    async def throw_ball(self) -> bool:
-        """Throw a ball for the pet."""
         success, response = await self._send_and_wait(
-            "THROWBALL", {}, timeout=10, verify=True
+            "SLEEP", {}, timeout=10, verify=record
+        )
+        if not success:
+            return False
+
+        logger.info("✅ SLEEP action confirmed by server")
+        if not record:
+            return True
+
+        verification = self._extract_verification(response)
+        if verification:
+            logger.info("📗 Submitting verified SLEEP action on-chain")
+            self._schedule_verified_record_action("SLEEP", verification)
+            return True
+
+        recorder_enabled = bool(
+            self._action_recorder and self._action_recorder.is_enabled
+        )
+        if recorder_enabled:
+            logger.warning(
+                "🧾 SLEEP verification missing; will retry to ensure on-chain record"
+            )
+            return False
+
+        return True
+
+    async def throw_ball(self, *, record_on_chain: Optional[bool] = None) -> bool:
+        """Throw a ball for the pet."""
+        record = (
+            self._onchain_recording_enabled
+            if record_on_chain is None
+            else bool(record_on_chain)
+        )
+        success, response = await self._send_and_wait(
+            "THROWBALL", {}, timeout=10, verify=record
         )
         if success:
             verification = self._extract_verification(response)
-            if verification:
+            if verification and record:
                 logger.info(
                     "✅ THROWBALL action confirmed; submitting verified on-chain record"
                 )
                 self._schedule_verified_record_action("THROWBALL", verification)
         return bool(success)
 
-    async def use_consumable(self, consumable_id: str) -> bool:
+    async def use_consumable(
+        self, consumable_id: str, *, record_on_chain: Optional[bool] = None
+    ) -> bool:
         """Use a consumable item."""
         if not consumable_id or not consumable_id.strip():
             logger.error(f"Invalid consumable ID provided: {consumable_id!r}")
@@ -1090,16 +1270,21 @@ class PettWebSocketClient:
         consumable_id = consumable_id.strip().strip('"').strip("'")
         logger.info(f"🍴 Using consumable: {consumable_id}")
 
+        record = (
+            self._onchain_recording_enabled
+            if record_on_chain is None
+            else bool(record_on_chain)
+        )
         success, response = await self._send_and_wait(
             "CONSUMABLES_USE",
             {"params": {"foodId": consumable_id}},
             timeout=15,
-            verify=True,
+            verify=record,
         )
 
         if success:
             verification = self._extract_verification(response)
-            if verification:
+            if verification and record:
                 self._schedule_verified_record_action("CONSUMABLES_USE", verification)
             return True
 
@@ -1129,11 +1314,11 @@ class PettWebSocketClient:
                 "CONSUMABLES_USE",
                 {"params": {"foodId": consumable_id}},
                 timeout=15,
-                verify=True,
+                verify=record,
             )
             if retry_success:
                 verification2 = self._extract_verification(retry_resp)
-                if verification2:
+                if verification2 and record:
                     self._schedule_verified_record_action(
                         "CONSUMABLES_USE", verification2
                     )
@@ -1142,7 +1327,11 @@ class PettWebSocketClient:
         return False
 
     async def buy_consumable(
-        self, consumable_id: str, amount: int, *, record_on_chain: bool = True
+        self,
+        consumable_id: str,
+        amount: int,
+        *,
+        record_on_chain: Optional[bool] = None,
     ) -> bool:
         """Buy a consumable item for the pet.
 
@@ -1165,13 +1354,19 @@ class PettWebSocketClient:
 
         # Normalize the ID to avoid accidental surrounding quotes
         consumable_id = consumable_id.strip().strip('"').strip("'")
+        record = (
+            self._onchain_recording_enabled
+            if record_on_chain is None
+            else bool(record_on_chain)
+        )
+
         success, resp = await self._send_and_wait(
             "CONSUMABLES_BUY",
             {"params": {"foodId": consumable_id, "amount": amount}},
             timeout=15,
-            verify=record_on_chain,
+            verify=record,
         )
-        if success and record_on_chain:
+        if success and record:
             verification = self._extract_verification(resp)
             if verification:
                 self._schedule_verified_record_action("CONSUMABLES_BUY", verification)
@@ -1352,39 +1547,53 @@ class PettWebSocketClient:
             # Clean up the future
             self.closet_future = None
 
-    async def use_accessory(self, accessory_id: str) -> bool:
+    async def use_accessory(
+        self, accessory_id: str, *, record_on_chain: Optional[bool] = None
+    ) -> bool:
         """Use an accessory."""
         if not accessory_id or not accessory_id.strip():
             logger.error("Invalid accessory ID provided")
             return False
 
+        record = (
+            self._onchain_recording_enabled
+            if record_on_chain is None
+            else bool(record_on_chain)
+        )
         success, response = await self._send_and_wait(
             "ACCESSORY_USE",
             {"params": {"accessoryId": accessory_id.strip()}},
             timeout=10,
-            verify=True,
+            verify=record,
         )
         if success:
             verification = self._extract_verification(response)
-            if verification:
+            if verification and record:
                 self._schedule_verified_record_action("ACCESSORY_USE", verification)
         return bool(success)
 
-    async def buy_accessory(self, accessory_id: str) -> bool:
+    async def buy_accessory(
+        self, accessory_id: str, *, record_on_chain: Optional[bool] = None
+    ) -> bool:
         """Buy an accessory."""
         if not accessory_id or not accessory_id.strip():
             logger.error("Invalid accessory ID provided")
             return False
 
+        record = (
+            self._onchain_recording_enabled
+            if record_on_chain is None
+            else bool(record_on_chain)
+        )
         success, response = await self._send_and_wait(
             "ACCESSORY_BUY",
             {"params": {"accessoryId": accessory_id.strip()}},
             timeout=10,
-            verify=True,
+            verify=record,
         )
         if success:
             verification = self._extract_verification(response)
-            if verification:
+            if verification and record:
                 self._schedule_verified_record_action("ACCESSORY_BUY", verification)
         return bool(success)
 
@@ -1489,27 +1698,37 @@ class PettWebSocketClient:
             {"type": "GEN_IMAGE", "data": {"params": {"prompt": prompt.strip()}}}
         )
 
-    async def hotel_check_in(self) -> bool:
+    async def hotel_check_in(self, *, record_on_chain: Optional[bool] = None) -> bool:
         """Check pet into hotel."""
         logger.info("[TOOL] Checking pet into hotel")
+        record = (
+            self._onchain_recording_enabled
+            if record_on_chain is None
+            else bool(record_on_chain)
+        )
         success, response = await self._send_and_wait(
-            "HOTEL_CHECK_IN", {}, timeout=10, verify=True
+            "HOTEL_CHECK_IN", {}, timeout=10, verify=record
         )
         if success:
             verification = self._extract_verification(response)
-            if verification:
+            if verification and record:
                 self._schedule_verified_record_action("HOTEL_CHECK_IN", verification)
         return bool(success)
 
-    async def hotel_check_out(self) -> bool:
+    async def hotel_check_out(self, *, record_on_chain: Optional[bool] = None) -> bool:
         """Check pet out of hotel."""
         logger.info("[TOOL] Checking pet out of hotel")
+        record = (
+            self._onchain_recording_enabled
+            if record_on_chain is None
+            else bool(record_on_chain)
+        )
         success, response = await self._send_and_wait(
-            "HOTEL_CHECK_OUT", {}, timeout=10, verify=True
+            "HOTEL_CHECK_OUT", {}, timeout=10, verify=record
         )
         if success:
             verification = self._extract_verification(response)
-            if verification:
+            if verification and record:
                 self._schedule_verified_record_action("HOTEL_CHECK_OUT", verification)
         return bool(success)
 

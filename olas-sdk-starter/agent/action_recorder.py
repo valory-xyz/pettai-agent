@@ -434,7 +434,7 @@ class ActionRecorder:
 
     async def record_action_verified(
         self, action_name: str, verification: Dict[str, Any]
-    ) -> None:
+    ) -> bool:
         """Record a Pett action on-chain using server-provided signature verification.
 
         The verification dict is expected to have the following structure:
@@ -448,20 +448,23 @@ class ActionRecorder:
             "nonce": "0x..."               # bytes32 hex
           }
         }
+        Returns True if the on-chain transaction was successfully submitted.
         """
         if not self._enabled or not self._contract or not self._w3 or not self._account:
-            return
+            return False
 
         action_key = (action_name or "").upper()
-        # Prefer local mapping for robustness; fall back to server-provided id if unknown
-        action_id = self._action_type_ids.get(action_key)
+        # Get server-provided action_id first (used for signature/hash computation)
         try:
             _msg_action = (verification.get("message", {}) or {}).get("action")
             server_action_id = int(_msg_action) if _msg_action is not None else None
         except Exception:
             server_action_id = None  # type: ignore[assignment]
-        if action_id is None and server_action_id is not None:
-            action_id = server_action_id
+
+        # Prefer server action_id for hash computation; fall back to local mapping
+        action_id = server_action_id
+        if action_id is None:
+            action_id = self._action_type_ids.get(action_key)
 
         if action_id is None:
             # Unknown action mapping; log and abort
@@ -470,7 +473,7 @@ class ActionRecorder:
                 self._logger.debug(
                     f"No action id mapping defined for '{action_key}' (and no server id)"
                 )
-            return
+            return False
 
         message = verification.get("message", {}) or {}
         signature = verification.get("signature", {}) or {}
@@ -495,7 +498,7 @@ class ActionRecorder:
             self._logger.debug(
                 f"Incomplete verification payload for {action_key}: nonce={bool(nonce_hex)} ts={timestamp} v={v}"
             )
-            return
+            return False
 
         # Log scheduling
         try:
@@ -513,7 +516,7 @@ class ActionRecorder:
         try:
             assert action_id is not None
             inner_hash_hex = str(verification.get("hash", "") or "").strip()
-            await loop.run_in_executor(
+            success = await loop.run_in_executor(
                 None,
                 self._record_action_verified_sync,
                 action_key,
@@ -525,10 +528,12 @@ class ActionRecorder:
                 s,
                 inner_hash_hex,
             )
+            return bool(success)
         except Exception as exc:
             self._logger.warning(
                 f"Failed to submit verified recordAction for {action_key}: {exc}"
             )
+            return False
 
     def _record_action_verified_sync(
         self,
@@ -540,18 +545,21 @@ class ActionRecorder:
         r: str,
         s: str,
         inner_hash_hex: str,
-    ) -> None:
-        """Execute the synchronous portion of verified recordAction."""
+    ) -> bool:
+        """Execute the synchronous portion of verified recordAction.
+
+        Returns True if the transaction was successfully submitted.
+        """
         if not self._enabled:
-            return
+            return False
         if self._contract is None:
-            return
+            return False
         if self._account is None:
-            return
+            return False
         if self._w3 is None:
-            return
+            return False
         if self._private_key is None:
-            return
+            return False
 
         contract = self._contract
         safe = self._safe_contract
@@ -563,7 +571,7 @@ class ActionRecorder:
             self._logger.warning(
                 "Multisig not configured; cannot submit verified action"
             )
-            return
+            return False
         if not self._refresh_safe_owner_status(
             force=True,
             context=f"recordAction:{action_key}",
@@ -571,7 +579,7 @@ class ActionRecorder:
             self._logger.error(
                 "Safe owner verification failed; aborting execTransaction"
             )
-            return
+            return False
 
         max_attempts = 50
         for attempt in range(max_attempts):
@@ -587,7 +595,7 @@ class ActionRecorder:
                         self._logger.error(
                             "Unable to derive recordAction hash; aborting execTransaction"
                         )
-                        return
+                        return False
 
                     hash_to_verify = derived_inner_hash
                     if inner_hash_hex:
@@ -599,19 +607,24 @@ class ActionRecorder:
                                 inner_hash_hex,
                                 exc,
                             )
-                            return
+                            return False
                         if len(provided_hash) != 32:
                             self._logger.error(
                                 "Inner verification hash length != 32 bytes; aborting execTransaction"
                             )
-                            return
+                            return False
                         if provided_hash != derived_inner_hash:
                             self._logger.error(
-                                "Provided recordAction hash %s does not match derived hash %s; aborting execTransaction",
+                                "Provided recordAction hash %s does not match derived hash %s; "
+                                "aborting execTransaction. Hash computed with action_id=%s, "
+                                "nonce=%s, timestamp=%s",
                                 provided_hash.hex(),
                                 derived_inner_hash.hex(),
+                                action_id,
+                                nonce_hex,
+                                timestamp,
                             )
-                            return
+                            return False
                         hash_to_verify = provided_hash
 
                     try:
@@ -621,15 +634,11 @@ class ActionRecorder:
                             "eth_keys not available to recover inner signer: %s",
                             exc,
                         )
-                        return
+                        return False
 
                     try:
-                        r_int = (
-                            int(str(r), 16) if str(r).startswith("0x") else int(r)
-                        )
-                        s_int = (
-                            int(str(s), 16) if str(s).startswith("0x") else int(s)
-                        )
+                        r_int = int(str(r), 16) if str(r).startswith("0x") else int(r)
+                        s_int = int(str(s), 16) if str(s).startswith("0x") else int(s)
                         v_raw = int(v)
                         # Normalize v to {0,1} for eth_keys: handle 27/28 and EIP-155 variants
                         if v_raw in (0, 1):
@@ -646,7 +655,7 @@ class ActionRecorder:
                         self._logger.error(
                             f"Failed to recover inner recordAction signer: {exc}"
                         )
-                        return
+                        return False
 
                     try:
                         expected_main_signer = Web3.to_checksum_address(
@@ -656,7 +665,7 @@ class ActionRecorder:
                         self._logger.error(
                             f"Failed to load ActionRepo.mainSigner for verification: {exc}"
                         )
-                        return
+                        return False
 
                     recovered_inner_cs = Web3.to_checksum_address(recovered_inner)
                     matches_main_signer = recovered_inner_cs == expected_main_signer
@@ -670,7 +679,7 @@ class ActionRecorder:
                             "Inner recordAction signer does not match ActionRepo.mainSigner"
                         )
                         self._logger.error("Aborting execTransaction")
-                        return
+                        return False
 
                     # Build inner calldata for ActionRepo.recordAction (prefer direct encode)
                     try:
@@ -700,7 +709,7 @@ class ActionRecorder:
                         inner_data_bytes = self._to_bytes(inner_data_hex)
                     except Exception as exc:
                         self._logger.warning(f"Failed to encode inner calldata: {exc}")
-                        return
+                        return False
 
                     # Safe params (mirrors Valory's get_raw_safe_transaction defaults)
                     to_addr = contract.address
@@ -825,20 +834,20 @@ class ActionRecorder:
 
                     # Fetch Safe nonce with fallback
                     try:
-                        safe_nonce, safe_nonce_is_fallback = self._get_safe_nonce_with_fallback(
-                            safe
+                        safe_nonce, safe_nonce_is_fallback = (
+                            self._get_safe_nonce_with_fallback(safe)
                         )
                     except RuntimeError as exc:
                         self._logger.error(
                             "Failed to resolve Safe nonce; aborting execTransaction: %s",
                             exc,
                         )
-                        return
+                        return False
                     if safe_nonce_is_fallback:
                         self._logger.warning(
                             "Safe nonce fallback in effect; delaying execTransaction submission to avoid stale nonce"
                         )
-                        return
+                        return False
                     try:
                         self._logger.info(f"Safe nonce: {safe_nonce}")
                     except Exception:
@@ -865,7 +874,7 @@ class ActionRecorder:
                             pass
                     except Exception as exc:
                         self._logger.warning(f"Failed to compute Safe tx hash: {exc}")
-                        return
+                        return False
 
                     signatures: bytes = b""
                     # Sign for eth_sign flow (v -> v+4)
@@ -902,7 +911,7 @@ class ActionRecorder:
                                     f"Recovered signer {recovered_address} does not match agent EOA {account.address}; "
                                     f"aborting execTransaction"
                                 )
-                                return
+                                return False
                             try:
                                 owners_dbg = list(safe.functions.getOwners().call())
                             except Exception:
@@ -935,23 +944,23 @@ class ActionRecorder:
                                     f"Recovered signer {recovered_cs} does not match agent EOA {account_cs}; "
                                     f"aborting execTransaction"
                                 )
-                                return
+                                return False
                             if not is_owner_recovered:
                                 self._logger.error(
                                     f"Recovered signer {recovered_cs} is not an owner of the Safe; "
                                     f"aborting execTransaction"
                                 )
-                                return
+                                return False
                         except Exception as _exc:
                             self._logger.debug(f"Failed to recover signer: {_exc}")
                     except Exception as exc:
                         self._logger.warning(f"Failed to sign Safe transaction: {exc}")
-                        return
+                        return False
                     if not signatures:
                         self._logger.error(
                             "Failed to assemble Safe signature payload; aborting execTransaction"
                         )
-                        return
+                        return False
 
                     safe_exec_min = self._compute_safe_exec_min_gas(safe_tx_gas)
                     exec_intrinsic_gas = self._estimate_exec_intrinsic_gas(
@@ -1097,7 +1106,8 @@ class ActionRecorder:
                         )
                     elif configured_gas != MIN_GAS:
                         transaction_dict["gas"] = self._cap_transaction_gas(
-                            configured_gas, "Safe.execTransaction gas limit (configured)"
+                            configured_gas,
+                            "Safe.execTransaction gas limit (configured)",
                         )
                         try:
                             self._logger.warning(
@@ -1164,7 +1174,7 @@ class ActionRecorder:
                     self._logger.info(
                         f"Safe.execTransaction submitted: action={action_key} id={action_id} tx={sent_hash.hex()}"
                     )
-                    return
+                    return True
             except ValueError as exc:
                 self._handle_value_error(exc)
                 try:
@@ -1261,10 +1271,12 @@ class ActionRecorder:
                     f"Contract rejected verified recordAction for {action_key}: {exc}"
                 )
                 self._nonce_cache = None
-                return
+                return False
             except Exception:
                 self._nonce_cache = None
                 raise
+        # If we get here without returning True, all attempts failed
+        return False
 
     def _refresh_safe_owner_status(
         self,
@@ -1386,7 +1398,34 @@ class ActionRecorder:
     def _compute_record_action_hash(
         self, action_id: int, nonce_hex: str, timestamp: int
     ) -> Optional[HexBytes]:
-        """Derive the recordAction hash used for signature verification."""
+        """Derive the recordAction hash used for signature verification.
+
+        The backend signs an EIP-712 typed payload:
+          domain: {name: "PettAIActionVerifier", version: "1",
+                   chainId: <rpc chain id>, verifyingContract: <action repo>}
+          types:  PetAction(action:uint8, nonce:bytes32, timestamp:uint256)
+        The final digest is keccak256(0x1901 || domainSeparator || structHash).
+        """
+        if self._w3 is None or self._contract is None:
+            self._logger.error(
+                "Web3 or contract unavailable while computing recordAction hash"
+            )
+            return None
+
+        try:
+            chain_id = int(self._w3.eth.chain_id)  # type: ignore[attr-defined]
+        except Exception as exc:
+            self._logger.error(f"Failed to load chainId for recordAction hash: {exc}")
+            return None
+
+        try:
+            verifying_contract = Web3.to_checksum_address(self._contract.address)
+        except Exception as exc:
+            self._logger.error(
+                f"Failed to normalise verifying contract for recordAction hash: {exc}"
+            )
+            return None
+
         try:
             nonce_bytes = HexBytes(nonce_hex)
         except Exception as exc:
@@ -1399,15 +1438,46 @@ class ActionRecorder:
                 "Nonce for recordAction hash must be 32 bytes; aborting verification"
             )
             return None
+
         try:
-            return Web3.solidity_keccak(
-                ["uint8", "bytes32", "uint256"],
-                [int(action_id), nonce_bytes, int(timestamp)],
+            from eth_abi import encode as abi_encode
+        except ImportError as exc:
+            self._logger.error(f"eth_abi not available for EIP-712 hash: {exc}")
+            return None
+
+        try:
+            # EIP-712 domain separator (uses abi.encode, NOT encodePacked)
+            domain_typehash = Web3.keccak(
+                text="EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"
             )
+            name_hash = Web3.keccak(text="PettAIActionVerifier")
+            version_hash = Web3.keccak(text="1")
+            domain_encoded = abi_encode(
+                ["bytes32", "bytes32", "bytes32", "uint256", "address"],
+                [
+                    domain_typehash,
+                    name_hash,
+                    version_hash,
+                    chain_id,
+                    verifying_contract,
+                ],
+            )
+            domain_separator = Web3.keccak(domain_encoded)
+
+            # Typed struct hash (uses abi.encode for 32-byte padding)
+            action_typehash = Web3.keccak(
+                text="PetAction(uint8 action,bytes32 nonce,uint256 timestamp)"
+            )
+            struct_encoded = abi_encode(
+                ["bytes32", "uint8", "bytes32", "uint256"],
+                [action_typehash, int(action_id), nonce_bytes, int(timestamp)],
+            )
+            struct_hash = Web3.keccak(struct_encoded)
+
+            # Final EIP-712 digest: keccak256(0x1901 || domainSeparator || structHash)
+            return HexBytes(Web3.keccak(b"\x19\x01" + domain_separator + struct_hash))
         except Exception as exc:
-            self._logger.error(
-                f"Failed to compute recordAction hash for verification: {exc}"
-            )
+            self._logger.error(f"Failed to compute EIP-712 recordAction hash: {exc}")
             return None
 
     def _resolve_nonce(self) -> int:

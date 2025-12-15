@@ -15,8 +15,6 @@ PACKAGES_FILE := packages/packages.json
 HASH_FILE := hash_id
 AGENT_ID_FILE := agent_id
 AGENT_DIR := ./agent
-CA_DIR := $(AGENT_DIR)/certs
-DEFAULT_WS_CA := $(CA_DIR)/ws_pett_ai_ca.pem
 FRONTEND_DIR := frontend
 FRONTEND_BUILD_DIR := $(FRONTEND_DIR)/build
 FRONTEND_BUILD_CMD := yarn --cwd $(FRONTEND_DIR)
@@ -166,17 +164,6 @@ install-deps: clean-cache
 	python -m pip install --upgrade pip setuptools wheel
 	python -m pip install -r requirements.txt
 	python -m pip install open-autonomy==0.19.11 pyinstaller==6.4.0
-
-.PHONY: install-ca-bundle
-install-ca-bundle:
-	mkdir -p $(CA_DIR)
-	@if [ -n "$$WS_PETT_AI_CA_BUNDLE_B64" ]; then \
-		echo "$$WS_PETT_AI_CA_BUNDLE_B64" | base64 --decode > $(DEFAULT_WS_CA); \
-		chmod 600 $(DEFAULT_WS_CA); \
-		echo "Installed Pett WebSocket CA bundle to $(DEFAULT_WS_CA)"; \
-	else \
-		echo "WS_PETT_AI_CA_BUNDLE_B64 not set; skipping Pett WebSocket CA bundle installation."; \
-	fi
 
 # Write the agent IPFS hash to hash_id
 $(HASH_FILE): $(PACKAGES_FILE)

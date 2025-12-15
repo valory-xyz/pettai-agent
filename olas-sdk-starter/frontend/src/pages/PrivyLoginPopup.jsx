@@ -22,6 +22,21 @@ const PrivyLoginPopupContent = () => {
   const [email, setEmail] = useState('');
   const [emailWithCode, setEmailWithCode] = useState(null);
   const [code, setCode] = useState('');
+  const [isClearingSession, setIsClearingSession] = useState(false);
+  const [hasForcedLogout, setHasForcedLogout] = useState(false);
+  const forceLogout = useMemo(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const raw = params.get('forceLogout');
+      if (raw === null) return false;
+      const normalized = raw.toString().toLowerCase();
+      return raw === '' || normalized === '1' || normalized === 'true';
+    } catch (error) {
+      console.warn('[PrivyLoginPopup] Unable to parse query params for forceLogout', error);
+      return false;
+    }
+  }, []);
   const openerOrigins = useMemo(() => {
     if (typeof window === 'undefined') {
       return [];
@@ -151,6 +166,24 @@ const PrivyLoginPopupContent = () => {
     }
   }, [ready, authenticated, status]);
 
+  useEffect(() => {
+    if (!ready || !forceLogout || hasForcedLogout) return;
+    const clearPrivySession = async () => {
+      setIsClearingSession(true);
+      try {
+        await logout();
+      } catch (error) {
+        console.warn('[PrivyLoginPopup] Failed to clear Privy session before login', error);
+      } finally {
+        setHasForcedLogout(true);
+        setIsClearingSession(false);
+        setStatus(STATUS.PROMPTING);
+        setErrorMessage(null);
+      }
+    };
+    clearPrivySession();
+  }, [forceLogout, hasForcedLogout, logout, ready]);
+
   const handleSendCode = useCallback(async () => {
     if (!normalizedEmail) {
       setErrorMessage('Enter a valid email address.');
@@ -239,10 +272,12 @@ const PrivyLoginPopupContent = () => {
       }
     };
 
-    if (ready && authenticated) {
+    const shouldWaitForLogout =
+      forceLogout && (isClearingSession || !hasForcedLogout);
+    if (ready && authenticated && !shouldWaitForLogout) {
       sendToken();
     }
-  }, [ready, authenticated, getAccessToken, logout, handlePrivyError, sendMessageToOpener, statusCopy]);
+  }, [authenticated, forceLogout, getAccessToken, handlePrivyError, hasForcedLogout, isClearingSession, logout, ready, sendMessageToOpener, statusCopy]);
 
   const statusDescription = statusCopy[status];
 

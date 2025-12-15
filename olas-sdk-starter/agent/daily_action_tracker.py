@@ -10,9 +10,16 @@ logger = logging.getLogger(__name__)
 class DailyActionTracker:
     """Persist and expose per-epoch action progress for the Pett agent."""
 
-    def __init__(self, storage_path: Path, required_actions: int = 8) -> None:
+    def __init__(
+        self,
+        storage_path: Path,
+        required_actions: int = 8,
+        *,
+        reset_on_start: bool = False,
+    ) -> None:
         self.storage_path = storage_path
         self.required_actions = max(0, required_actions)
+        self._reset_on_start = bool(reset_on_start)
         self._state: Dict[str, Any] = {
             "epoch": self._current_epoch(),
             "actions": [],
@@ -44,6 +51,10 @@ class DailyActionTracker:
                 raise ValueError("tracker state must be a dict")
             self._state = data
             self._ensure_current_epoch()
+            if self._reset_on_start:
+                # Ignore persisted action counts; start fresh on boot
+                self._state["actions"] = []
+                self._save_state()
         except Exception as exc:
             logger.warning("Failed to load daily action tracker state: %s", exc)
             self._state = {"epoch": self._current_epoch(), "actions": []}
@@ -87,6 +98,24 @@ class DailyActionTracker:
     def has_met_required_actions(self) -> bool:
         """Return True once the minimum required actions have been satisfied."""
         return self.actions_completed() >= self.required_actions
+
+    def reset_for_new_epoch(self, epoch_identifier: Optional[str] = None) -> None:
+        """Reset action counter for a new staking epoch.
+
+        Args:
+            epoch_identifier: Optional identifier for the new epoch (uses UTC date if not provided).
+        """
+        new_epoch = epoch_identifier or self._current_epoch()
+        prev_epoch = self._state.get("epoch")
+        prev_count = len(self._state.get("actions", []))
+        logger.info(
+            "🔄 Resetting verified on-chain tx counter for new epoch: %s → %s (had %d verified txs)",
+            prev_epoch,
+            new_epoch,
+            prev_count,
+        )
+        self._state = {"epoch": new_epoch, "actions": []}
+        self._save_state()
 
     def snapshot(self) -> Dict[str, Any]:
         """Return a shallow copy of the current state for telemetry."""

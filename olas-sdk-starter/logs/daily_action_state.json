@@ -1,13 +1,4 @@
 {
-  "actions": [
-    {
-      "name": "CONSUMABLES_USE",
-      "timestamp": "2025-12-12T15:28:46.314850+00:00"
-    },
-    {
-      "name": "CONSUMABLES_USE",
-      "timestamp": "2025-12-12T16:20:41.786132+00:00"
-    }
-  ],
-  "epoch": "2025-12-12"
+  "actions": [],
+  "epoch": "2025-12-15"
 }

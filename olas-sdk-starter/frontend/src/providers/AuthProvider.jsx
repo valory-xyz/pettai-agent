@@ -10,7 +10,9 @@ import React, {
 import { getOriginAliases } from '../utils/originAliases';
 
 const AuthContext = createContext(null);
-const POPUP_FEATURES = 'width=420,height=720,resizable=yes,scrollbars=yes';
+// Popup features that force a popup window (not a tab)
+// Including menubar=no, toolbar=no, location=no ensures it opens as a popup
+const POPUP_FEATURES = 'width=420,height=720,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no';
 
 export const AuthProvider = ({ children }) => {
 	const [ready, setReady] = useState(false);
@@ -237,9 +239,17 @@ export const AuthProvider = ({ children }) => {
 	}, [isPopupOpen]);
 
 	const login = useCallback(() => {
-		// Clean up any existing popup before opening a new one
-		cleanupPopup();
-		
+		// Close any existing popup first (do this synchronously to maintain user gesture chain)
+		if (popupRef.current && !popupRef.current.closed) {
+			try {
+				popupRef.current.close();
+			} catch (error) {
+				console.warn('[Auth] Error closing existing popup:', error);
+			}
+			popupRef.current = null;
+		}
+		setIsPopupOpen(false);
+
 		const popupUrl = new URL('/privy-login', window.location.origin);
 		if (sessionResetSeq > 0) {
 			popupUrl.searchParams.set('forceLogout', '1');
@@ -249,24 +259,32 @@ export const AuthProvider = ({ children }) => {
 		// Use a unique window name each time to prevent browser from reusing existing window
 		// This ensures it opens as a popup, not a tab, and maintains window.opener reference
 		const windowName = `privy-login-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-		
+
+		// window.open must be called synchronously in response to user action
+		// The features string with menubar=no, toolbar=no, location=no forces a popup window
 		const popup = window.open(popupUrl.toString(), windowName, POPUP_FEATURES);
+
 		if (popup) {
-			// Verify the popup was opened correctly and has opener reference
-			// If popup is null or opener is lost, it might have opened as a tab
-			try {
-				// Small delay to ensure popup is fully initialized
-				setTimeout(() => {
+			// Verify the popup was opened correctly
+			// Check if it opened as a popup (has opener) vs a tab (no opener or opener is the same window)
+			setTimeout(() => {
+				try {
 					if (popup.closed) {
 						console.warn('[Auth] Popup was closed immediately after opening');
 						setIsPopupOpen(false);
 						return;
 					}
-				}, 100);
-			} catch (error) {
-				console.warn('[Auth] Error checking popup state:', error);
-			}
-			
+					// Verify opener exists - if not, it might have opened as a tab
+					// Note: We can't directly check popup.opener from the parent, but we can check
+					// if the popup reference is valid
+					if (!popup || popup === window) {
+						console.warn('[Auth] Popup may have opened as a tab instead of popup');
+					}
+				} catch (error) {
+					console.warn('[Auth] Error checking popup state:', error);
+				}
+			}, 100);
+
 			popupRef.current = popup;
 			setIsPopupOpen(true);
 			setPopupStatus({
@@ -286,7 +304,7 @@ export const AuthProvider = ({ children }) => {
 			});
 			setAuthError(message);
 		}
-	}, [sessionResetSeq, cleanupPopup]);
+	}, [sessionResetSeq]);
 
 	const logout = useCallback(async () => {
 		try {

@@ -24,7 +24,6 @@ import React, {
 } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useAuthMessageListener } from '../hooks/useAuthMessageListener';
-import { getOriginAliases } from '../utils/originAliases';
 
 // Create the context
 const AuthContext = createContext(null);
@@ -49,7 +48,7 @@ const isInIframe = () => {
 };
 
 export const AuthProvider = ({ children }) => {
-	const { ready, authenticated: privyAuthenticated, logout: privyLogout } = usePrivy();
+	const { ready, logout: privyLogout } = usePrivy();
 
 	// Local auth state
 	const [privyToken, setPrivyToken] = useState(null);
@@ -197,13 +196,6 @@ export const AuthProvider = ({ children }) => {
 		};
 	}, [ready]);
 
-	// Get allowed origins for postMessage validation
-	const allowedOrigins = useMemo(() => {
-		if (typeof window === 'undefined') {
-			return [];
-		}
-		return getOriginAliases(window.location.origin);
-	}, []);
 
 	// Cleanup popup
 	const cleanupPopup = useCallback(() => {

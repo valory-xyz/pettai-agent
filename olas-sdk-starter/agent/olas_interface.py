@@ -1014,7 +1014,7 @@ class OlasInterface:
             "STAKING_TOKEN_ADDRESS",
             "STAKING_TOKEN_PROXY_ADDRESS",
             "SERVICE_STAKING_CONTRACT_ADDRESS",
-            "CONNECTION_CONFIGS_CONFIG_STAKING_TOKEN_ADDRESS",
+            "CONNECTION_CONFIGS_CONFIG_STAKING_CONTRACT_ADDRESS",
         )
         for env_name in staking_token_env_candidates:
             value = os.environ.get(env_name)

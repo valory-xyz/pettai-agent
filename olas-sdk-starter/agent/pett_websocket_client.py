@@ -1288,11 +1288,26 @@ class PettWebSocketClient:
                 self._schedule_verified_record_action("CONSUMABLES_USE", verification)
             return True
 
-        # Attempt auto-buy on "not found" error then retry once
+        # Check for rate limiting errors
         error_text = ""
         if isinstance(response, dict):
             error_text = str(response.get("error", ""))
 
+        # Handle rate limiting with exponential backoff
+        if error_text and (
+            "too quickly" in error_text.lower() or "rate limit" in error_text.lower()
+        ):
+            logger.warning(
+                f"⏳ Rate limited when using {consumable_id}. Waiting before retry..."
+            )
+            await asyncio.sleep(2.0)  # Wait 2 seconds before returning False
+            return False
+
+        # If use failed (but not rate limited), wait before any retry to avoid rate limiting
+        if not success:
+            await asyncio.sleep(1.0)
+
+        # Attempt auto-buy on "not found" error then retry once
         if error_text and ("not found" in error_text.lower()):
             logger.info(
                 f"🛒 Consumable {consumable_id} not owned. Attempting to buy one and retry."
@@ -1308,6 +1323,8 @@ class PettWebSocketClient:
                 )
                 return False
 
+            # Wait before retrying use after purchase to avoid rate limiting
+            await asyncio.sleep(1.0)
             # Retry once after successful buy
             logger.info(f"🔁 Retrying use of {consumable_id} after purchase")
             retry_success, retry_resp = await self._send_and_wait(
@@ -1366,6 +1383,19 @@ class PettWebSocketClient:
             timeout=15,
             verify=record,
         )
+
+        # Check for rate limiting errors
+        if not success and isinstance(resp, dict):
+            error_text = str(resp.get("error", ""))
+            if error_text and (
+                "too quickly" in error_text.lower()
+                or "rate limit" in error_text.lower()
+            ):
+                logger.warning(
+                    f"⏳ Rate limited when buying {consumable_id}. Waiting before returning..."
+                )
+                await asyncio.sleep(2.0)  # Wait 2 seconds before returning False
+
         if success and record:
             verification = self._extract_verification(resp)
             if verification:

@@ -1385,11 +1385,11 @@ class PettAgent:
         return all(value < threshold for value in values)
 
     async def _recover_low_health(self) -> bool:
-        """Attempt to recover health using SMALL_POTION or SALAD.
+        """Attempt to recover health using SALAD or POTION.
 
-        Preference:
-        1) Use SMALL_POTION via CONSUMABLES_USE (blueprintID: SMALL_POTION)
-        2) Fallback to eat SALAD (blueprintID: SALAD) via use_consumable
+        Flow:
+        1) Try SALAD -> if not available, buy SALAD -> wait -> retry SALAD
+        2) If SALAD doesn't work -> wait -> try POTION -> if not available, buy POTION -> wait -> use POTION
         """
         if self._low_health_recovery_in_progress:
             return False
@@ -1400,52 +1400,27 @@ class PettAgent:
 
             client = self.websocket_client
 
-            # Try small health potion first
-            self.logger.info("🧪 Trying SMALL_POTION to restore health")
-            # The API path for potion use is via buy/use or direct consumable use when owned.
-            # We try direct consumable use by blueprint id.
-            try:
-                success = await self._execute_action_with_tracking(
-                    "CONSUMABLES_USE", lambda: client.use_consumable("SMALL_POTION")
-                )
-                if success:
-                    self.logger.info("✅ SMALL_POTION use confirmed")
-                    await asyncio.sleep(0.5)
-                    return True
-                # If use failed, try to buy one then use again
-                self.logger.info("🛒 SMALL_POTION not available; attempting to buy 1")
-                bought = await client.buy_consumable(
-                    "SMALL_POTION", 1, record_on_chain=False
-                )
-                if bought:
-                    await asyncio.sleep(0.5)
-                    self.logger.info("🔁 Using SMALL_POTION after purchase")
-                    success = await self._execute_action_with_tracking(
-                        "CONSUMABLES_USE", lambda: client.use_consumable("SMALL_POTION")
-                    )
-                    if success:
-                        self.logger.info("✅ SMALL_POTION use confirmed after purchase")
-                        await asyncio.sleep(0.5)
-                        return True
-            except Exception as e:
-                self.logger.debug(f"Small potion use/buy failed: {e}")
-
-            # Fallback to SALAD (improves health and hunger)
-            self.logger.info("🥗 Falling back to SALAD to recover health")
+            # Step 1: Try SALAD first
+            self.logger.info("🥗 Trying SALAD to recover health")
             try:
                 success = await self._execute_action_with_tracking(
                     "CONSUMABLES_USE", lambda: client.use_consumable("SALAD")
                 )
                 if success:
                     self.logger.info("✅ SALAD consumption confirmed")
-                    await asyncio.sleep(0.5)
+                    await asyncio.sleep(1.0)
                     return True
-                # If use failed, try to buy one then use again
-                self.logger.info("🛒 SALAD not available; attempting to buy 1")
+            except Exception as e:
+                self.logger.debug(f"Salad use failed: {e}")
+
+            # If SALAD use failed, try to buy it
+            self.logger.info("🛒 SALAD not available; attempting to buy 1")
+            try:
                 bought = await client.buy_consumable("SALAD", 1, record_on_chain=False)
                 if bought:
-                    await asyncio.sleep(0.5)
-                    self.logger.info("🔁 Using SALAD after purchase")
+                    await asyncio.sleep(2.0)  # Wait a bit after purchase
+                    # Retry SALAD after purchase
+                    self.logger.info("🔁 Retrying SALAD after purchase")
                     success = await self._execute_action_with_tracking(
                         "CONSUMABLES_USE", lambda: client.use_consumable("SALAD")
                     )
@@ -1453,10 +1428,46 @@ class PettAgent:
                         self.logger.info(
                             "✅ SALAD consumption confirmed after purchase"
                         )
-                        await asyncio.sleep(0.5)
+                        await asyncio.sleep(1.0)
                         return True
             except Exception as e:
-                self.logger.debug(f"Salad use/buy failed: {e}")
+                self.logger.debug(f"Salad buy/retry failed: {e}")
+
+            # If SALAD doesn't work, wait and try POTION
+            await asyncio.sleep(1.5)  # Wait before trying potion
+            self.logger.info("💊 SALAD failed; trying POTION (health-only)")
+
+            # Step 2: Try POTION
+            try:
+                success = await self._execute_action_with_tracking(
+                    "CONSUMABLES_USE", lambda: client.use_consumable("SMALL_POTION")
+                )
+                if success:
+                    self.logger.info("✅ SMALL_POTION use confirmed")
+                    await asyncio.sleep(1.0)
+                    return True
+            except Exception as e:
+                self.logger.debug(f"Potion use failed: {e}")
+
+            # If POTION not available, buy it
+            self.logger.info("🛒 POTION not available; attempting to buy 1")
+            try:
+                bought = await client.buy_consumable(
+                    "SMALL_POTION", 1, record_on_chain=False
+                )
+                if bought:
+                    await asyncio.sleep(2.0)  # Wait a bit after purchase
+                    # Use POTION after purchase
+                    self.logger.info("🔁 Using POTION after purchase")
+                    success = await self._execute_action_with_tracking(
+                        "CONSUMABLES_USE", lambda: client.use_consumable("SMALL_POTION")
+                    )
+                    if success:
+                        self.logger.info("✅ SMALL_POTION use confirmed after purchase")
+                        await asyncio.sleep(1.0)
+                        return True
+            except Exception as e:
+                self.logger.debug(f"Potion buy/use failed: {e}")
 
             return False
         finally:

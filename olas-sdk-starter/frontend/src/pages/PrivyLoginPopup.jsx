@@ -93,23 +93,52 @@ const PrivyLoginPopupContent = () => {
       if (typeof window === 'undefined') {
         return false;
       }
-      if (!window.opener || window.opener.closed) {
-        return false;
-      }
+
       const timestampedPayload = { ...payload, sentAt: Date.now() };
       let delivered = false;
 
-      openerOrigins.forEach(origin => {
+      // Try window.opener first (standard popup case)
+      if (window.opener && !window.opener.closed) {
+        openerOrigins.forEach(origin => {
+          try {
+            window.opener.postMessage(timestampedPayload, origin);
+            delivered = true;
+          } catch (error) {
+            console.warn(
+              `[PrivyLoginPopup] Failed to notify opener for origin ${origin}`,
+              error
+            );
+          }
+        });
+      }
+
+      // Fallback 1: try window.parent for iframe contexts
+      if (!delivered && window.parent && window.parent !== window) {
+        openerOrigins.forEach(origin => {
+          try {
+            window.parent.postMessage(timestampedPayload, origin);
+            delivered = true;
+          } catch (error) {
+            console.warn(
+              `[PrivyLoginPopup] Failed to notify parent for origin ${origin}`,
+              error
+            );
+          }
+        });
+      }
+
+      // Fallback 2: Use BroadcastChannel for cross-window communication
+      // This works even when window.opener is lost (e.g., iframe contexts after logout)
+      if (typeof BroadcastChannel !== 'undefined') {
         try {
-          window.opener.postMessage(timestampedPayload, origin);
+          const channel = new BroadcastChannel('pett-auth-channel');
+          channel.postMessage(timestampedPayload);
+          channel.close();
           delivered = true;
         } catch (error) {
-          console.warn(
-            `[PrivyLoginPopup] Failed to notify opener for origin ${origin}`,
-            error
-          );
+          console.warn('[PrivyLoginPopup] BroadcastChannel fallback failed:', error);
         }
-      });
+      }
 
       return delivered;
     },
@@ -225,62 +254,40 @@ const PrivyLoginPopupContent = () => {
   }, [code, loginWithCode]);
 
   useEffect(() => {
-    // Check if window.opener exists immediately on mount
-    // This helps detect if the window was opened incorrectly (as a tab instead of popup)
-    if (typeof window !== 'undefined' && (!window.opener || window.opener.closed)) {
-      setStatus(STATUS.NO_OPENER);
-      setErrorMessage(
-        'This window was opened without the Pett Agent dashboard. Please close this window and click "Launch Privy Login" from the dashboard to open it as a popup.'
-      );
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Only run on mount to check opener
-
-  useEffect(() => {
     const sendToken = async () => {
-      if (!window.opener || window.opener.closed) {
-        setStatus(STATUS.NO_OPENER);
-        setErrorMessage(
-          'This window was opened without the Pett Agent dashboard. Please close this window and click "Launch Privy Login" from the dashboard to open it as a popup.'
-        );
-        // Try to send message anyway (might fail, but that's okay)
-        try {
-          sendMessageToOpener({
-            type: 'privy-popup-error',
-            message: 'Login window lost reference to Pett dashboard.',
-            error: {
-              message:
-                'This window was opened without the Pett Agent dashboard. Please close it and try again.',
-            },
-          });
-        } catch (error) {
-          // Expected to fail if opener is null/closed
-          console.warn('[PrivyLoginPopup] Cannot send message to opener:', error);
-        }
-        return;
-      }
+      // Don't pre-check window.opener - just try to send the token
+      // This allows iframe contexts and various popup scenarios to work
       try {
         setStatus(STATUS.SENDING);
         const token = await getAccessToken();
         if (!token) {
           throw new Error('Missing Privy token');
         }
+
         const delivered = sendMessageToOpener({
           type: 'privy-token',
           token,
         });
+
         if (!delivered) {
+          // Could not deliver token - show error but don't crash
           console.warn(
-            '[PrivyLoginPopup] Privy token dispatched but no opener origins accepted the message.'
+            '[PrivyLoginPopup] Could not deliver token to opener/parent window.'
           );
+          setStatus(STATUS.NO_OPENER);
+          setErrorMessage(
+            'Unable to connect to the Pett Agent dashboard. Please close this window and try again from the dashboard.'
+          );
+          return;
         }
+
         setStatus(STATUS.COMPLETED);
-        window.close();
         sendMessageToOpener({
           type: 'privy-popup-status',
           status: STATUS.COMPLETED,
           message: statusCopy[STATUS.COMPLETED],
         });
+        window.close();
       } catch (error) {
         handlePrivyError(
           'Unable to retrieve Privy token. Please try again.',
@@ -554,22 +561,62 @@ const PrivyLoginPopupContent = () => {
         </div>
       )}
       {(status === STATUS.ERROR || status === STATUS.NO_OPENER) && (
-        <button
+        <div
           style={{
-            padding: '0.6rem 1.25rem',
-            borderRadius: '999px',
-            border: 'none',
-            background: '#4A90E2',
-            color: '#fff',
-            fontWeight: '600',
-            cursor: 'pointer',
-          }}
-          onClick={() => {
-            window.location.reload();
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '0.75rem',
+            alignItems: 'center',
+            width: '100%',
+            maxWidth: '24rem',
           }}
         >
-          Retry
-        </button>
+          <button
+            style={{
+              padding: '0.6rem 1.25rem',
+              borderRadius: '999px',
+              border: 'none',
+              background: '#4A90E2',
+              color: '#fff',
+              fontWeight: '600',
+              cursor: 'pointer',
+              width: '100%',
+            }}
+            onClick={() => {
+              window.location.reload();
+            }}
+          >
+            Retry
+          </button>
+          <button
+            style={{
+              padding: '0.6rem 1.25rem',
+              borderRadius: '999px',
+              border: '1px solid rgba(255,255,255,0.3)',
+              background: 'transparent',
+              color: '#f1f5ff',
+              fontWeight: '600',
+              cursor: 'pointer',
+              width: '100%',
+            }}
+            onClick={() => {
+              // Try to refresh the opener/parent window, then close this popup
+              try {
+                if (window.opener && !window.opener.closed) {
+                  window.opener.location.reload();
+                } else if (window.parent && window.parent !== window) {
+                  window.parent.location.reload();
+                }
+              } catch (error) {
+                console.warn('[PrivyLoginPopup] Could not refresh parent window:', error);
+              }
+              // Close this popup window
+              window.close();
+            }}
+          >
+            Close & Refresh Dashboard
+          </button>
+        </div>
       )}
     </div>
   );

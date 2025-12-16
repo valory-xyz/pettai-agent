@@ -134,10 +134,11 @@ export const AuthProvider = ({ children }) => {
 
 	useEffect(() => {
 		let isMounted = true;
+		let broadcastChannel = null;
 
-		const handleMessage = event => {
-			if (!allowedOrigins.includes(event.origin)) return;
-			const { type, token, status, message, error } = event.data || {};
+		// Handler for processing auth messages (from postMessage or BroadcastChannel)
+		const processAuthMessage = (data) => {
+			const { type, token, status, message, error } = data || {};
 
 			if (type === 'privy-token' && token) {
 				cleanupPopup();
@@ -189,6 +190,26 @@ export const AuthProvider = ({ children }) => {
 			}
 		};
 
+		// Handler for window.postMessage events
+		const handleMessage = event => {
+			if (!allowedOrigins.includes(event.origin)) return;
+			processAuthMessage(event.data);
+		};
+
+		// Set up BroadcastChannel as fallback for iframe contexts
+		// This receives messages even when window.opener is lost
+		if (typeof BroadcastChannel !== 'undefined') {
+			try {
+				broadcastChannel = new BroadcastChannel('pett-auth-channel');
+				broadcastChannel.onmessage = (event) => {
+					console.log('[Auth] Received message via BroadcastChannel:', event.data?.type);
+					processAuthMessage(event.data);
+				};
+			} catch (error) {
+				console.warn('[Auth] BroadcastChannel not available:', error);
+			}
+		}
+
 		const restoreSessionIfAvailable = async () => {
 			try {
 				const response = await fetch('/api/health');
@@ -223,6 +244,13 @@ export const AuthProvider = ({ children }) => {
 		return () => {
 			isMounted = false;
 			window.removeEventListener('message', handleMessage);
+			if (broadcastChannel) {
+				try {
+					broadcastChannel.close();
+				} catch (error) {
+					// Ignore close errors
+				}
+			}
 		};
 	}, [allowedOrigins, authenticateWithBackend, cleanupPopup]);
 

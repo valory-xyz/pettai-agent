@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import platform
 import random
 import ssl
 from pathlib import Path
@@ -316,11 +317,19 @@ class PettWebSocketClient:
             ssl_context = self._ssl_context
             if ssl_context is None and self.websocket_url.startswith("wss://"):
                 try:
-                    # Force certifi CA bundle while still honoring runtime overrides
-                    ssl_context = ssl.create_default_context(cafile=certifi.where())
+                    # On macOS, use system certificates; on other platforms, use certifi
+                    if platform.system() == "Darwin":
+                        ssl_context = ssl.create_default_context()
+                        # Also add certifi as additional source
+                        try:
+                            ssl_context.load_verify_locations(cafile=certifi.where())
+                        except Exception:
+                            pass  # May already be included
+                    else:
+                        ssl_context = ssl.create_default_context(cafile=certifi.where())
                 except Exception as exc:
                     logger.error(
-                        "❌ Failed to build SSL context with certifi certificates: %s",
+                        "❌ Failed to build SSL context: %s",
                         exc,
                     )
                     return False
@@ -365,13 +374,26 @@ class PettWebSocketClient:
             )
             return ssl._create_unverified_context()  # type: ignore[attr-defined]
 
+        # On macOS, create_default_context() without cafile uses system certificates
+        # On other platforms, we'll use certifi as the base
         try:
-            context = ssl.create_default_context(cafile=certifi.where())
+            if platform.system() == "Darwin":
+                # macOS: use system certificates first, then add certifi and custom CAs
+                context = ssl.create_default_context()
+            else:
+                # Linux/Windows: use certifi as base
+                context = ssl.create_default_context(cafile=certifi.where())
         except Exception as exc:
-            logger.error(
-                f"❌ Failed to create default SSL context using certifi bundle: {exc}"
-            )
+            logger.error(f"❌ Failed to create default SSL context: {exc}")
             return None
+
+        # Always add certifi bundle as additional source (works on all platforms)
+        try:
+            context.load_verify_locations(cafile=certifi.where())
+        except Exception as exc:
+            logger.debug(
+                f"Could not load certifi bundle (may already be included): {exc}"
+            )
 
         default_used = False
         if not ca_file and not ca_path and DEFAULT_WS_CA_FILE.exists():

@@ -237,14 +237,36 @@ export const AuthProvider = ({ children }) => {
 	}, [isPopupOpen]);
 
 	const login = useCallback(() => {
+		// Clean up any existing popup before opening a new one
+		cleanupPopup();
+		
 		const popupUrl = new URL('/privy-login', window.location.origin);
 		if (sessionResetSeq > 0) {
 			popupUrl.searchParams.set('forceLogout', '1');
 			popupUrl.searchParams.set('resetSeq', String(sessionResetSeq));
 		}
 
-		const popup = window.open(popupUrl.toString(), 'privy-login', POPUP_FEATURES);
+		// Use a unique window name each time to prevent browser from reusing existing window
+		// This ensures it opens as a popup, not a tab, and maintains window.opener reference
+		const windowName = `privy-login-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+		
+		const popup = window.open(popupUrl.toString(), windowName, POPUP_FEATURES);
 		if (popup) {
+			// Verify the popup was opened correctly and has opener reference
+			// If popup is null or opener is lost, it might have opened as a tab
+			try {
+				// Small delay to ensure popup is fully initialized
+				setTimeout(() => {
+					if (popup.closed) {
+						console.warn('[Auth] Popup was closed immediately after opening');
+						setIsPopupOpen(false);
+						return;
+					}
+				}, 100);
+			} catch (error) {
+				console.warn('[Auth] Error checking popup state:', error);
+			}
+			
 			popupRef.current = popup;
 			setIsPopupOpen(true);
 			setPopupStatus({
@@ -264,7 +286,7 @@ export const AuthProvider = ({ children }) => {
 			});
 			setAuthError(message);
 		}
-	}, [sessionResetSeq]);
+	}, [sessionResetSeq, cleanupPopup]);
 
 	const logout = useCallback(async () => {
 		try {

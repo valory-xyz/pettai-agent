@@ -225,20 +225,38 @@ const PrivyLoginPopupContent = () => {
   }, [code, loginWithCode]);
 
   useEffect(() => {
+    // Check if window.opener exists immediately on mount
+    // This helps detect if the window was opened incorrectly (as a tab instead of popup)
+    if (typeof window !== 'undefined' && (!window.opener || window.opener.closed)) {
+      setStatus(STATUS.NO_OPENER);
+      setErrorMessage(
+        'This window was opened without the Pett Agent dashboard. Please close this window and click "Launch Privy Login" from the dashboard to open it as a popup.'
+      );
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Only run on mount to check opener
+
+  useEffect(() => {
     const sendToken = async () => {
       if (!window.opener || window.opener.closed) {
         setStatus(STATUS.NO_OPENER);
         setErrorMessage(
-          'This window was opened without the Pett Agent dashboard. Please close it and try again.'
+          'This window was opened without the Pett Agent dashboard. Please close this window and click "Launch Privy Login" from the dashboard to open it as a popup.'
         );
-        sendMessageToOpener({
-          type: 'privy-popup-error',
-          message: 'Login window lost reference to Pett dashboard.',
-          error: {
-            message:
-              'This window was opened without the Pett Agent dashboard. Please close it and try again.',
-          },
-        });
+        // Try to send message anyway (might fail, but that's okay)
+        try {
+          sendMessageToOpener({
+            type: 'privy-popup-error',
+            message: 'Login window lost reference to Pett dashboard.',
+            error: {
+              message:
+                'This window was opened without the Pett Agent dashboard. Please close it and try again.',
+            },
+          });
+        } catch (error) {
+          // Expected to fail if opener is null/closed
+          console.warn('[PrivyLoginPopup] Cannot send message to opener:', error);
+        }
         return;
       }
       try {

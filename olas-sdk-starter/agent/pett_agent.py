@@ -1418,7 +1418,7 @@ class PettAgent:
             try:
                 bought = await client.buy_consumable("SALAD", 1, record_on_chain=False)
                 if bought:
-                    await asyncio.sleep(2.0)  # Wait a bit after purchase
+                    await asyncio.sleep(1.5)  # Wait a bit after purchase
                     # Retry SALAD after purchase
                     self.logger.info("🔁 Retrying SALAD after purchase")
                     success = await self._execute_action_with_tracking(
@@ -1456,7 +1456,7 @@ class PettAgent:
                     "SMALL_POTION", 1, record_on_chain=False
                 )
                 if bought:
-                    await asyncio.sleep(2.0)  # Wait a bit after purchase
+                    await asyncio.sleep(1.5)  # Wait a bit after purchase
                     # Use POTION after purchase
                     self.logger.info("🔁 Using POTION after purchase")
                     success = await self._execute_action_with_tracking(
@@ -2576,8 +2576,48 @@ class PettAgent:
                 )
                 return
 
+            # All consumable attempts failed; use free actions (rubs, showers, sleep)
             self.logger.warning(
-                "⚠️ Consumable attempts failed; sleeping remains disabled for this cycle"
+                "⚠️ Consumable attempts failed; using free actions (rubs, showers, sleep)"
+            )
+
+            # Priority 1: Rub (free action, doesn't depend on other stats)
+            self.logger.info("🤗 Critical stats: attempting rub to improve happiness")
+            rub_success = await self._execute_action_with_tracking(
+                "RUB", client.rub_pet, treat_already_clean_as_success=True
+            )
+            if rub_success:
+                self.logger.info("🤗 Rub performed; deferring other actions this cycle")
+                return
+
+            # Priority 2: Shower (free action, doesn't depend on other stats)
+            self.logger.info("🚿 Critical stats: attempting shower to improve hygiene")
+            shower_success = await self._execute_action_with_tracking(
+                "SHOWER", client.shower_pet, treat_already_clean_as_success=True
+            )
+            if shower_success:
+                self.logger.info(
+                    "🚿 Shower performed; deferring other actions this cycle"
+                )
+                return
+
+            # Priority 3: Sleep (free action, helps rebuild energy)
+            if not sleeping and energy < self.WAKE_ENERGY_THRESHOLD:
+                self.logger.info(
+                    "😴 Critical stats: attempting sleep to rebuild energy (energy %.1f%%)",
+                    energy,
+                )
+                sleep_success = await self._execute_action_with_tracking(
+                    "SLEEP", client.sleep_pet
+                )
+                if sleep_success:
+                    self.logger.info(
+                        "😴 Sleep performed; deferring other actions this cycle"
+                    )
+                    return
+
+            self.logger.warning(
+                "⚠️ All free action attempts (rubs, showers, sleep) failed for critical stats"
             )
 
         if (

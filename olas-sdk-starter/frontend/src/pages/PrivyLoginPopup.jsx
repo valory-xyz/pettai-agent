@@ -24,6 +24,7 @@ const PrivyLoginPopupContent = () => {
   const [code, setCode] = useState('');
   const [isClearingSession, setIsClearingSession] = useState(false);
   const [hasForcedLogout, setHasForcedLogout] = useState(false);
+
   const forceLogout = useMemo(() => {
     if (typeof window === 'undefined') return false;
     try {
@@ -37,6 +38,7 @@ const PrivyLoginPopupContent = () => {
       return false;
     }
   }, []);
+
   const openerOrigins = useMemo(() => {
     if (typeof window === 'undefined') {
       return [];
@@ -71,6 +73,7 @@ const PrivyLoginPopupContent = () => {
 
     return Array.from(aliasSet);
   }, []);
+
   const statusCopy = useMemo(
     () => ({
       [STATUS.INITIALIZING]: 'Preparing secure login…',
@@ -88,6 +91,8 @@ const PrivyLoginPopupContent = () => {
     }),
     [errorMessage]
   );
+
+  // FIXED: Multi-channel message sending that works in Electron iframe
   const sendMessageToOpener = useCallback(
     payload => {
       if (typeof window === 'undefined') {
@@ -97,49 +102,84 @@ const PrivyLoginPopupContent = () => {
       const timestampedPayload = { ...payload, sentAt: Date.now() };
       let delivered = false;
 
-      // Try window.opener first (standard popup case)
+      // Log origin for debugging
+      console.log('[PrivyLoginPopup] Current origin:', window.location.origin);
+      console.log('[PrivyLoginPopup] Sending message type:', payload.type);
+
+      // METHOD 1: BroadcastChannel (MOST RELIABLE for Electron iframe)
+      // This works even when window.opener is null, as long as same origin
+      if (typeof BroadcastChannel !== 'undefined') {
+        try {
+          const channel = new BroadcastChannel('pett-auth-channel');
+          channel.postMessage(timestampedPayload);
+          // Don't close immediately - give it time to send
+          setTimeout(() => {
+            try { channel.close(); } catch (e) { }
+          }, 100);
+          delivered = true;
+          console.log('[PrivyLoginPopup] ✓ Sent via BroadcastChannel');
+        } catch (error) {
+          console.warn('[PrivyLoginPopup] BroadcastChannel failed:', error);
+        }
+      } else {
+        console.warn('[PrivyLoginPopup] ⚠ BroadcastChannel not available');
+      }
+
+      // METHOD 2: localStorage event (backup for same-origin)
+      try {
+        const storageKey = 'pett-auth-message';
+        localStorage.setItem(storageKey, JSON.stringify({
+          ...timestampedPayload,
+          _storageTimestamp: Date.now(), // Force change detection
+        }));
+        // Clean up after a short delay
+        setTimeout(() => {
+          try {
+            localStorage.removeItem(storageKey);
+          } catch (e) {
+            // Ignore cleanup errors
+          }
+        }, 2000);
+        delivered = true;
+        console.log('[PrivyLoginPopup] ✓ Sent via localStorage');
+      } catch (error) {
+        console.warn('[PrivyLoginPopup] localStorage failed:', error);
+      }
+
+      // METHOD 3: Try window.opener (standard popup case - may not work in Electron)
       if (window.opener && !window.opener.closed) {
         openerOrigins.forEach(origin => {
           try {
             window.opener.postMessage(timestampedPayload, origin);
             delivered = true;
+            console.log('[PrivyLoginPopup] ✓ Sent via opener to:', origin);
           } catch (error) {
-            console.warn(
-              `[PrivyLoginPopup] Failed to notify opener for origin ${origin}`,
-              error
-            );
+            console.warn(`[PrivyLoginPopup] opener.postMessage failed for ${origin}:`, error);
           }
         });
       }
 
-      // Fallback 1: try window.parent for iframe contexts
-      if (!delivered && window.parent && window.parent !== window) {
+      // METHOD 4: Try window.parent (iframe case)
+      if (window.parent && window.parent !== window) {
         openerOrigins.forEach(origin => {
           try {
             window.parent.postMessage(timestampedPayload, origin);
             delivered = true;
+            console.log('[PrivyLoginPopup] ✓ Sent via parent to:', origin);
           } catch (error) {
-            console.warn(
-              `[PrivyLoginPopup] Failed to notify parent for origin ${origin}`,
-              error
-            );
+            console.warn(`[PrivyLoginPopup] parent.postMessage failed for ${origin}:`, error);
           }
         });
-      }
-
-      // Fallback 2: Use BroadcastChannel for cross-window communication
-      // This works even when window.opener is lost (e.g., iframe contexts after logout)
-      if (typeof BroadcastChannel !== 'undefined') {
+        // Also try wildcard for cross-origin iframes
         try {
-          const channel = new BroadcastChannel('pett-auth-channel');
-          channel.postMessage(timestampedPayload);
-          channel.close();
+          window.parent.postMessage(timestampedPayload, '*');
           delivered = true;
         } catch (error) {
-          console.warn('[PrivyLoginPopup] BroadcastChannel fallback failed:', error);
+          // Ignore
         }
       }
 
+      console.log('[PrivyLoginPopup] Message delivery result:', delivered ? 'SUCCESS' : 'FAILED');
       return delivered;
     },
     [openerOrigins]
@@ -255,8 +295,6 @@ const PrivyLoginPopupContent = () => {
 
   useEffect(() => {
     const sendToken = async () => {
-      // Don't pre-check window.opener - just try to send the token
-      // This allows iframe contexts and various popup scenarios to work
       try {
         setStatus(STATUS.SENDING);
         const token = await getAccessToken();
@@ -264,16 +302,17 @@ const PrivyLoginPopupContent = () => {
           throw new Error('Missing Privy token');
         }
 
+        console.log('[PrivyLoginPopup] Token obtained, sending to parent...');
+
         const delivered = sendMessageToOpener({
           type: 'privy-token',
           token,
         });
 
+        // CHANGED: In Electron context, BroadcastChannel/localStorage should work
+        // Don't show error if we sent via those channels
         if (!delivered) {
-          // Could not deliver token - show error but don't crash
-          console.warn(
-            '[PrivyLoginPopup] Could not deliver token to opener/parent window.'
-          );
+          console.warn('[PrivyLoginPopup] Could not deliver token via any channel');
           setStatus(STATUS.NO_OPENER);
           setErrorMessage(
             'Unable to connect to the Pett Agent dashboard. Please close this window and try again from the dashboard.'
@@ -287,7 +326,16 @@ const PrivyLoginPopupContent = () => {
           status: STATUS.COMPLETED,
           message: statusCopy[STATUS.COMPLETED],
         });
-        window.close();
+
+        // Try to close, but don't worry if it fails
+        // The parent should handle the token regardless
+        setTimeout(() => {
+          try {
+            window.close();
+          } catch (e) {
+            console.log('[PrivyLoginPopup] Could not auto-close window');
+          }
+        }, 500);
       } catch (error) {
         handlePrivyError(
           'Unable to retrieve Privy token. Please try again.',

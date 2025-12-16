@@ -1,80 +1,71 @@
+/**
+ * AuthProvider - Example implementation that works in Electron iframe contexts
+ * 
+ * This provider handles authentication using Privy in a way that works when:
+ * 1. Running in a standard browser
+ * 2. Running inside an Electron application
+ * 3. Running inside an iframe within Electron
+ * 
+ * Key Changes for Electron Iframe Support:
+ * - Uses BroadcastChannel as primary communication method
+ * - Falls back to localStorage events for same-origin messaging
+ * - Handles window.opener being null after logout
+ * - Properly tracks popup state even when reference is lost
+ */
+
 import React, {
 	createContext,
 	useCallback,
 	useContext,
 	useEffect,
 	useMemo,
-	useRef,
 	useState,
+	useRef,
 } from 'react';
+import { usePrivy } from '@privy-io/react-auth';
+import { useAuthMessageListener } from '../hooks/useAuthMessageListener';
 import { getOriginAliases } from '../utils/originAliases';
 
+// Create the context
 const AuthContext = createContext(null);
-// Popup features that force a popup window (not a tab)
-// Including menubar=no, toolbar=no, location=no ensures it opens as a popup
-const POPUP_FEATURES = 'width=420,height=720,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no';
+
+// Detect environment
+const isElectron = () => {
+	if (typeof window === 'undefined') return false;
+	return !!(
+		window.process?.versions?.electron ||
+		window.navigator?.userAgent?.includes('Electron') ||
+		window.electronAPI
+	);
+};
+
+const isInIframe = () => {
+	if (typeof window === 'undefined') return false;
+	try {
+		return window.self !== window.top;
+	} catch (e) {
+		return true;
+	}
+};
 
 export const AuthProvider = ({ children }) => {
-	const [ready, setReady] = useState(false);
-	const [authenticated, setAuthenticated] = useState(false);
-	const [isPopupOpen, setIsPopupOpen] = useState(false);
+	const { ready, authenticated: privyAuthenticated, logout: privyLogout } = usePrivy();
+
+	// Local auth state
+	const [privyToken, setPrivyToken] = useState(null);
 	const [wsPet, setWsPet] = useState(null);
-	const [authFailed, setAuthFailed] = useState(false);
-	const [authError, setAuthError] = useState(null);
+	const [isLoggingIn, setIsLoggingIn] = useState(false);
+	const [loginError, setLoginError] = useState(null);
 	const [popupStatus, setPopupStatus] = useState(null);
-	const [sessionResetSeq, setSessionResetSeq] = useState(0);
+
+	// Popup reference
 	const popupRef = useRef(null);
 
-	const allowedOrigins = useMemo(() => {
-		if (typeof window === 'undefined') {
-			return [];
-		}
-		return getOriginAliases(window.location.origin);
-	}, []);
+	// Derived state
+	const authenticated = !!privyToken && !!wsPet;
 
-	const clearClientAuthStorage = useCallback(() => {
-		if (typeof window === 'undefined') return;
-		const clearFromStorage = storage => {
-			if (!storage) return;
-			try {
-				const keysToRemove = [];
-				for (let i = 0; i < storage.length; i += 1) {
-					const key = storage.key(i);
-					if (!key) continue;
-					const lower = key.toLowerCase();
-					if (
-						lower.includes('privy') ||
-						lower.includes('pett') ||
-						lower.includes('auth')
-					) {
-						keysToRemove.push(key);
-					}
-				}
-				keysToRemove.forEach(key => storage.removeItem(key));
-			} catch (error) {
-				console.warn('[Auth] Unable to clear storage during logout', error);
-			}
-		};
-
-		clearFromStorage(window.localStorage);
-		clearFromStorage(window.sessionStorage);
-	}, []);
-
-	const cleanupPopup = useCallback(() => {
-		if (popupRef.current) {
-			try {
-				if (!popupRef.current.closed) {
-					popupRef.current.close();
-				}
-			} catch (error) {
-				console.warn('[Auth] Unable to close popup window', error);
-			}
-			popupRef.current = null;
-		}
-		setIsPopupOpen(false);
-	}, []);
-
-	const authenticateWithBackend = useCallback(async token => {
+	// Authenticate with backend using Privy token
+	const authenticateWithBackend = useCallback(async (token) => {
 		if (!token) {
 			return;
 		}
@@ -87,128 +78,89 @@ export const AuthProvider = ({ children }) => {
 			const data = await response.json();
 
 			if (!response.ok || data?.success !== true) {
-				console.error('[Auth] Backend login failed:', data);
+				console.error('[AuthProvider] Backend login failed:', data);
 				setWsPet(null);
-				setAuthFailed(true);
-				setAuthenticated(false);
-				const backendMessage =
-					data?.message || 'Backend login failed. Please try again.';
-				setAuthError(backendMessage);
+				setLoginError(data?.message || 'Backend login failed. Please try again.');
+				setIsLoggingIn(false);
 				setPopupStatus({
 					status: 'error',
-					message: backendMessage,
+					message: data?.message || 'Backend login failed. Please try again.',
 					error: data,
 					timestamp: Date.now(),
 				});
 				return;
 			}
 
-			console.log('[Auth] Backend login successful:', data);
+			console.log('[AuthProvider] Backend login successful:', data);
 
 			setWsPet(data.name || 'Connected');
-			setAuthFailed(false);
-			setAuthError(null);
-			setAuthenticated(true);
-			setSessionResetSeq(0);
+			setPrivyToken(token);
+			setLoginError(null);
+			setIsLoggingIn(false);
 			setPopupStatus({
 				status: 'completed',
 				message: 'Authenticated successfully. Connecting to your Pett agent…',
 				timestamp: Date.now(),
 			});
+
+			// Close popup if we have a reference
+			try {
+				if (popupRef.current && !popupRef.current.closed) {
+					popupRef.current.close();
+				}
+			} catch (e) {
+				// Popup may already be closed
+			}
+			popupRef.current = null;
 		} catch (error) {
-			console.error('[Auth] Error sending Privy token:', error?.message || error);
+			console.error('[AuthProvider] Error sending Privy token:', error?.message || error);
 			setWsPet(null);
-			setAuthFailed(true);
-			setAuthenticated(false);
-			const backendErrorMessage =
-				error?.message || 'Unable to authenticate with backend.';
-			setAuthError(backendErrorMessage);
+			setLoginError(error?.message || 'Unable to authenticate with backend.');
+			setIsLoggingIn(false);
 			setPopupStatus({
 				status: 'error',
-				message: backendErrorMessage,
+				message: error?.message || 'Unable to authenticate with backend.',
 				error,
 				timestamp: Date.now(),
 			});
 		}
 	}, []);
 
+	// Use the useAuthMessageListener hook to handle all message channels
+	useAuthMessageListener({
+		onToken: (token) => {
+			console.log('[AuthProvider] Token received via useAuthMessageListener');
+			authenticateWithBackend(token);
+		},
+		onError: (error) => {
+			console.error('[AuthProvider] Popup error:', error);
+			setLoginError(error?.message || 'Login failed. Please try again.');
+			setIsLoggingIn(false);
+			setPopupStatus({
+				status: 'error',
+				message: error?.message || 'Login failed. Please try again.',
+				error,
+				timestamp: Date.now(),
+			});
+		},
+		onPopupClosed: () => {
+			console.log('[AuthProvider] Popup closed');
+			setIsLoggingIn(false);
+			popupRef.current = null;
+		},
+		onStatusChange: (status, message) => {
+			console.log('[AuthProvider] Popup status:', status, message);
+			setPopupStatus({
+				status,
+				message: message || '',
+				timestamp: Date.now(),
+			});
+		},
+	});
+
+	// Restore session if available on mount
 	useEffect(() => {
 		let isMounted = true;
-		let broadcastChannel = null;
-
-		// Handler for processing auth messages (from postMessage or BroadcastChannel)
-		const processAuthMessage = (data) => {
-			const { type, token, status, message, error } = data || {};
-
-			if (type === 'privy-token' && token) {
-				cleanupPopup();
-				setPopupStatus({
-					status: 'token-received',
-					message: 'Privy token received. Finalizing authentication…',
-					timestamp: Date.now(),
-				});
-				authenticateWithBackend(token);
-			}
-
-			if (type === 'privy-popup-status') {
-				setPopupStatus({
-					status: status || 'unknown',
-					message: message || '',
-					error: error || null,
-					timestamp: Date.now(),
-				});
-				if (status === 'error') {
-					setAuthFailed(true);
-					setAuthError(error?.message || message || 'Login failed. Please try again.');
-				} else if (!error) {
-					setAuthFailed(false);
-					setAuthError(null);
-				}
-			}
-
-			if (type === 'privy-popup-error') {
-				const popupMessage =
-					error?.message || message || 'Login window reported an error. Please try again.';
-				setPopupStatus({
-					status: 'error',
-					message: popupMessage,
-					error: error || null,
-					timestamp: Date.now(),
-				});
-				setAuthFailed(true);
-				setAuthError(popupMessage);
-				cleanupPopup();
-			}
-
-			if (type === 'privy-popup-closed') {
-				setPopupStatus({
-					status: 'closed',
-					message: message || 'Login window closed.',
-					timestamp: Date.now(),
-				});
-				cleanupPopup();
-			}
-		};
-
-		// Handler for window.postMessage events
-		const handleMessage = event => {
-			if (!allowedOrigins.includes(event.origin)) return;
-			processAuthMessage(event.data);
-		};
-
-		// Set up BroadcastChannel as fallback for iframe contexts
-		// This receives messages even when window.opener is lost
-		if (typeof BroadcastChannel !== 'undefined') {
-			try {
-				broadcastChannel = new BroadcastChannel('pett-auth-channel');
-				broadcastChannel.onmessage = (event) => {
-					console.log('[Auth] Received message via BroadcastChannel:', event.data?.type);
-					processAuthMessage(event.data);
-				};
-			} catch (error) {
-				console.warn('[Auth] BroadcastChannel not available:', error);
-			}
-		}
 
 		const restoreSessionIfAvailable = async () => {
 			try {
@@ -224,152 +176,199 @@ export const AuthProvider = ({ children }) => {
 
 				if (!isAuthenticated || !isMounted) return;
 
-				setAuthenticated(true);
-				setAuthFailed(false);
-				setAuthError(null);
-				setSessionResetSeq(0);
-				setWsPet(prev => prev || data?.pet?.name || 'Connected');
+				setWsPet(data?.pet?.name || 'Connected');
+				// Note: We don't set privyToken here since we don't have it from the health check
+				// The authenticated state will be false until we get a token
 			} catch (error) {
-				console.warn('[Auth] Unable to restore existing session from backend:', error);
+				console.warn('[AuthProvider] Unable to restore existing session from backend:', error);
 			} finally {
 				if (isMounted) {
-					setReady(true);
+					// ready state is managed by Privy
 				}
 			}
 		};
 
-		window.addEventListener('message', handleMessage);
-		restoreSessionIfAvailable();
+		if (ready) {
+			restoreSessionIfAvailable();
+		}
 
 		return () => {
 			isMounted = false;
-			window.removeEventListener('message', handleMessage);
-			if (broadcastChannel) {
-				try {
-					broadcastChannel.close();
-				} catch (error) {
-					// Ignore close errors
-				}
-			}
 		};
-	}, [allowedOrigins, authenticateWithBackend, cleanupPopup]);
+	}, [ready]);
 
-	useEffect(() => {
-		if (!isPopupOpen) return undefined;
-		const checker = setInterval(() => {
-			if (popupRef.current && popupRef.current.closed) {
-				popupRef.current = null;
-				setIsPopupOpen(false);
-			}
-		}, 500);
+	// Get allowed origins for postMessage validation
+	const allowedOrigins = useMemo(() => {
+		if (typeof window === 'undefined') {
+			return [];
+		}
+		return getOriginAliases(window.location.origin);
+	}, []);
 
-		return () => clearInterval(checker);
-	}, [isPopupOpen]);
-
-	const login = useCallback(() => {
-		// Close any existing popup first (do this synchronously to maintain user gesture chain)
-		if (popupRef.current && !popupRef.current.closed) {
+	// Cleanup popup
+	const cleanupPopup = useCallback(() => {
+		if (popupRef.current) {
 			try {
-				popupRef.current.close();
+				if (!popupRef.current.closed) {
+					popupRef.current.close();
+				}
 			} catch (error) {
-				console.warn('[Auth] Error closing existing popup:', error);
+				console.warn('[AuthProvider] Unable to close popup window', error);
 			}
 			popupRef.current = null;
 		}
-		setIsPopupOpen(false);
+		setIsLoggingIn(false);
+	}, []);
+
+	// Open the login popup
+	const openLoginPopup = useCallback((forceLogout = false) => {
+		// Clean up any existing popup before opening a new one
+		cleanupPopup();
 
 		const popupUrl = new URL('/privy-login', window.location.origin);
-		if (sessionResetSeq > 0) {
+		if (forceLogout) {
 			popupUrl.searchParams.set('forceLogout', '1');
-			popupUrl.searchParams.set('resetSeq', String(sessionResetSeq));
 		}
 
 		// Use a unique window name each time to prevent browser from reusing existing window
 		// This ensures it opens as a popup, not a tab, and maintains window.opener reference
 		const windowName = `privy-login-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
 
+		// Popup features that force a popup window (not a tab)
+		const POPUP_FEATURES = 'width=420,height=720,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no';
+
+		setIsLoggingIn(true);
+		setLoginError(null);
+
 		// window.open must be called synchronously in response to user action
-		// The features string with menubar=no, toolbar=no, location=no forces a popup window
 		const popup = window.open(popupUrl.toString(), windowName, POPUP_FEATURES);
 
 		if (popup) {
-			// Verify the popup was opened correctly
-			// Check if it opened as a popup (has opener) vs a tab (no opener or opener is the same window)
-			setTimeout(() => {
-				try {
-					if (popup.closed) {
-						console.warn('[Auth] Popup was closed immediately after opening');
-						setIsPopupOpen(false);
-						return;
-					}
-					// Verify opener exists - if not, it might have opened as a tab
-					// Note: We can't directly check popup.opener from the parent, but we can check
-					// if the popup reference is valid
-					if (!popup || popup === window) {
-						console.warn('[Auth] Popup may have opened as a tab instead of popup');
-					}
-				} catch (error) {
-					console.warn('[Auth] Error checking popup state:', error);
-				}
-			}, 100);
-
 			popupRef.current = popup;
-			setIsPopupOpen(true);
 			setPopupStatus({
 				status: 'opening',
 				message: 'Opening secure Privy login…',
 				timestamp: Date.now(),
 			});
 			popup.focus();
-			setAuthError(null);
+
+			// Monitor popup closure
+			const checkClosed = setInterval(() => {
+				try {
+					if (!popupRef.current || popupRef.current.closed) {
+						clearInterval(checkClosed);
+						setIsLoggingIn(false);
+						popupRef.current = null;
+					}
+				} catch (e) {
+					// Access error can happen for cross-origin popups
+				}
+			}, 500);
 		} else {
-			const message =
-				'Unable to open login window. Please allow popups and try again.';
+			const message = 'Unable to open login window. Please allow popups and try again.';
 			setPopupStatus({
 				status: 'error',
 				message,
 				timestamp: Date.now(),
 			});
-			setAuthError(message);
+			setLoginError(message);
+			setIsLoggingIn(false);
 		}
-	}, [sessionResetSeq]);
+	}, [cleanupPopup]);
 
+	// Login function (opens popup)
+	const login = useCallback(() => {
+		openLoginPopup(false);
+	}, [openLoginPopup]);
+
+	// Logout function
 	const logout = useCallback(async () => {
+		console.log('[AuthProvider] Logging out');
+
 		try {
+			// Call backend logout
 			await fetch('/api/logout', { method: 'POST' });
 		} catch (e) {
-			console.warn('[Auth] Backend logout failed (continuing):', e);
+			console.warn('[AuthProvider] Backend logout failed (continuing):', e);
 		}
-		clearClientAuthStorage();
-		setSessionResetSeq(seq => seq + 1);
-		cleanupPopup();
-		setWsPet(null);
-		setAuthFailed(false);
-		setAuthError(null);
-		setAuthenticated(false);
-		setPopupStatus(null);
-	}, [cleanupPopup, clearClientAuthStorage]);
 
-	const value = {
+		// Clear local state
+		setPrivyToken(null);
+		setWsPet(null);
+		setPopupStatus(null);
+		setLoginError(null);
+		cleanupPopup();
+
+		// Logout from Privy
+		try {
+			await privyLogout();
+		} catch (error) {
+			console.warn('[AuthProvider] Privy logout error:', error);
+		}
+
+		console.log('[AuthProvider] Logout successful');
+	}, [privyLogout, cleanupPopup]);
+
+	// Login after logout (forces a fresh login)
+	const loginAfterLogout = useCallback(async () => {
+		console.log('[AuthProvider] Login after logout');
+
+		// First ensure we're logged out
+		await logout();
+
+		// Then open popup with forceLogout flag
+		// Small delay to ensure logout completes
+		setTimeout(() => {
+			openLoginPopup(true);
+		}, 100);
+	}, [logout, openLoginPopup]);
+
+	// Context value
+	const value = useMemo(() => ({
+		// State
+		ready,
+		authenticated,
+		user: null, // For compatibility
+		wsPet,
+		isModalOpen: isLoggingIn, // Alias for isLoggingIn
+		authError: loginError, // Alias for loginError
+		authFailed: !!loginError,
+		popupStatus,
+
+		// Environment info
+		isElectron: isElectron(),
+		isIframe: isInIframe(),
+
+		// Actions
 		login,
 		logout,
-		authenticated,
+		loginAfterLogout,
+	}), [
 		ready,
-		user: null,
+		authenticated,
 		wsPet,
-		authFailed,
-		authError,
-		isModalOpen: isPopupOpen,
+		isLoggingIn,
+		loginError,
 		popupStatus,
-	};
+		login,
+		logout,
+		loginAfterLogout,
+	]);
 
-	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+	return (
+		<AuthContext.Provider value={value}>
+			{children}
+		</AuthContext.Provider>
+	);
 };
 
+// Hook to use auth context
 export const useAuth = () => {
 	const context = useContext(AuthContext);
 	if (!context) {
-		throw new Error('useAuth must be used within AuthProvider');
+		throw new Error('useAuth must be used within an AuthProvider');
 	}
 	return context;
 };
+
+export default AuthProvider;

@@ -355,24 +355,12 @@ class PettWebSocketClient:
             return False
 
     def _build_ssl_context(self) -> Optional[ssl.SSLContext]:
-        """Build SSL context honoring CA overrides and optional verification bypass."""
+        """Build SSL context honoring CA overrides."""
         if not self.websocket_url or not self.websocket_url.startswith("wss://"):
             return None
 
-        skip_verify = os.getenv("WEBSOCKET_SKIP_SSL_VERIFY", "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-        }
         ca_file = (os.getenv("WEBSOCKET_CA_FILE") or "").strip()
         ca_path = (os.getenv("WEBSOCKET_CA_PATH") or "").strip()
-
-        if skip_verify:
-            logger.warning(
-                "⚠️ WEBSOCKET_SKIP_SSL_VERIFY enabled - TLS certificate verification "
-                "for Pett WebSocket connections is DISABLED. Use only in trusted environments."
-            )
-            return ssl._create_unverified_context()  # type: ignore[attr-defined]
 
         # On macOS, create_default_context() without cafile uses system certificates
         # On other platforms, we'll use certifi as the base

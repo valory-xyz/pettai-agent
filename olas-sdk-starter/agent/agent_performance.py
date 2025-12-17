@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -19,16 +18,8 @@ class AgentPerformanceStore:
 
     def __init__(self, logger: logging.Logger) -> None:
         self._logger = logger
-        store_root = os.environ.get("CONNECTION_CONFIGS_CONFIG_STORE_PATH")
-        if store_root and store_root.strip():
-            self._store_path = Path(store_root).expanduser()
-            self._file_path = self._store_path / self.FILENAME
-        else:
-            self._logger.warning(
-                "No store path configured, agent performance metrics will be on the current directory"
-            )
-            self._store_path = Path(".")
-            self._file_path = Path(".") / self.FILENAME
+        self._store_path = Path("./persistent_data")
+        self._file_path = Path("./persistent_data") / self.FILENAME
         self._ensure_initialized()
 
     @property

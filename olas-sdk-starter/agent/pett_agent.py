@@ -2490,6 +2490,224 @@ class PettAgent:
         )
         return False
 
+    async def _ensure_pet_is_awake(self) -> bool:
+        """Ensure the pet is awake before performing an action.
+
+        Returns:
+            True if pet was sleeping and we woke it, False if already awake
+        """
+        if not self.websocket_client:
+            return False
+
+        try:
+            pet_data = self.websocket_client.get_pet_data()
+            if not pet_data:
+                return False
+
+            is_sleeping = bool(pet_data.get("sleeping", False))
+            if not is_sleeping:
+                return False
+
+            # Pet is sleeping - wake it up
+            self.logger.info("😴 Pet is sleeping; waking up before performing action")
+            woke = await self.websocket_client.sleep_pet(record_on_chain=False)
+            if woke:
+                await asyncio.sleep(0.5)  # Give it a moment to fully wake
+                self.logger.info("✅ Pet is now awake")
+                return True
+            else:
+                self.logger.warning("⚠️ Failed to wake sleeping pet")
+                return False
+        except Exception as exc:
+            self.logger.warning("⚠️ Error checking/waking pet sleep state: %s", exc)
+            return False
+
+    async def _should_return_to_sleep(self, was_sleeping_before: bool) -> bool:
+        """Check if pet should return to sleep after performing an action.
+
+        Args:
+            was_sleeping_before: True if pet was sleeping before the action
+
+        Returns:
+            True if pet should go back to sleep
+        """
+        if not was_sleeping_before or not self.websocket_client:
+            return False
+
+        try:
+            pet_data = self.websocket_client.get_pet_data()
+            if not pet_data:
+                return False
+
+            # Check if pet is still awake (might have been put to sleep by action)
+            is_sleeping_now = bool(pet_data.get("sleeping", False))
+            if is_sleeping_now:
+                return False  # Already sleeping
+
+            stats = pet_data.get("PetStats", {})
+            energy = self._to_float(stats.get("energy", 0))
+            hunger = self._to_float(stats.get("hunger", 0))
+            health = self._to_float(stats.get("health", 0))
+            hygiene = self._to_float(stats.get("hygiene", 0))
+            happiness = self._to_float(stats.get("happiness", 0))
+
+            # Don't go back to sleep if stats are critical
+            critical_threshold = self.CRITICAL_STAT_THRESHOLD
+            is_critical = (
+                hunger < critical_threshold
+                and health < critical_threshold
+                and hygiene < critical_threshold
+                and happiness < critical_threshold
+            )
+            if is_critical:
+                self.logger.debug(
+                    "⚠️ Stats are critical after action; not returning to sleep"
+                )
+                return False
+
+            # Return to sleep if energy is still above wake threshold
+            # This means the pet was likely sleeping with high energy
+            if energy >= self.WAKE_ENERGY_THRESHOLD:
+                self.logger.info(
+                    "😴 Pet was sleeping before action; returning to sleep (energy %.1f%%)",
+                    energy,
+                )
+                return True
+
+            return False
+        except Exception as exc:
+            self.logger.debug("Error checking if pet should return to sleep: %s", exc)
+            return False
+
+    async def _execute_action_with_fallbacks(
+        self,
+        client: PettWebSocketClient,
+        primary_action_name: str,
+        primary_action_callable: Callable[[], Awaitable[bool]],
+        *,
+        treat_already_clean_as_success: bool = False,
+        skipped_onchain_recording: bool = False,
+        max_retries: int = 3,
+        retry_delay: float = 3.0,
+    ) -> bool:
+        """Execute an action with fallback chain and retry logic.
+
+        Fallback order: Primary -> RUB -> SHOWER -> CONSUMABLES_USE -> Random consumable -> THROWBALL -> SLEEP
+
+        Args:
+            client: WebSocket client
+            primary_action_name: Name of the primary action to try
+            primary_action_callable: Callable that executes the primary action
+            treat_already_clean_as_success: If True, treat "already clean" errors as success
+            skipped_onchain_recording: If True, skip on-chain recording
+            max_retries: Maximum number of retry attempts (default: 3)
+            retry_delay: Delay between retries in seconds (default: 3.0)
+
+        Returns:
+            True if any action succeeded, False if all failed after retries
+        """
+        normalized_primary = (primary_action_name or "").upper() or "UNKNOWN"
+
+        # Define fallback chain (excluding the primary action)
+        fallback_actions = []
+
+        # Add fallbacks based on primary action
+        if normalized_primary != "RUB":
+            fallback_actions.append(("RUB", client.rub_pet, True))
+        if normalized_primary != "SHOWER":
+            fallback_actions.append(("SHOWER", client.shower_pet, True))
+        if normalized_primary != "CONSUMABLES_USE":
+            # Try to use owned consumables
+            async def try_use_consumable() -> bool:
+                if not self.websocket_client:
+                    return False
+                try:
+                    inv = await self._get_owned_consumables(force_refresh=False)
+                    # Try any available consumable
+                    for blueprint, info in inv.items():
+                        if info.get("quantity", 0) > 0:
+                            try:
+                                result = await self.websocket_client.use_consumable(
+                                    blueprint
+                                )
+                                return bool(result)
+                            except Exception:
+                                continue
+                except Exception:
+                    pass
+                return False
+
+            fallback_actions.append(("CONSUMABLES_USE", try_use_consumable, False))
+        if normalized_primary != "THROWBALL":
+            fallback_actions.append(("THROWBALL", client.throw_ball, False))
+        # SLEEP is always last in the fallback chain
+        if normalized_primary != "SLEEP":
+            fallback_actions.append(("SLEEP", client.sleep_pet, False))
+
+        # Try primary action and fallbacks with retries
+        for attempt in range(max_retries):
+            # Try primary action first
+            self.logger.info(
+                "🎯 Attempt %d/%d: Trying primary action %s",
+                attempt + 1,
+                max_retries,
+                normalized_primary,
+            )
+            success = await self._execute_action_with_tracking(
+                normalized_primary,
+                primary_action_callable,
+                treat_already_clean_as_success=treat_already_clean_as_success,
+                skipped_onchain_recording=skipped_onchain_recording,
+            )
+            if success:
+                self.logger.info("✅ Primary action %s succeeded", normalized_primary)
+                return True
+
+            # Primary action failed, try fallbacks
+            self.logger.warning(
+                "⚠️ Primary action %s failed; trying fallback actions...",
+                normalized_primary,
+            )
+            for fallback_name, fallback_callable, allow_clean in fallback_actions:
+                self.logger.info("🔄 Trying fallback action: %s", fallback_name)
+                fallback_success = await self._execute_action_with_tracking(
+                    fallback_name,
+                    fallback_callable,
+                    treat_already_clean_as_success=allow_clean,
+                    skipped_onchain_recording=skipped_onchain_recording,
+                )
+                if fallback_success:
+                    self.logger.info("✅ Fallback action %s succeeded", fallback_name)
+                    return True
+                self.logger.debug(
+                    "❌ Fallback action %s failed, trying next...", fallback_name
+                )
+
+            # All actions failed in this attempt
+            if attempt < max_retries - 1:
+                self.logger.warning(
+                    "⚠️ All actions failed in attempt %d/%d; retrying in %.1f seconds...",
+                    attempt + 1,
+                    max_retries,
+                    retry_delay,
+                )
+                await asyncio.sleep(retry_delay)
+
+        # All retries exhausted - log big error
+        fallback_names = [name for name, _, _ in fallback_actions]
+        error_msg = (
+            "\n" + "=" * 80 + "\n"
+            "🚨🚨🚨 CRITICAL ERROR 🚨🚨🚨\n"
+            "Pett.Ai server is unavailable at the moment!!!!\n"
+            "Didn't record any action on chain in this interval.\n"
+            f"Tried {max_retries} retries with {retry_delay}s delays (max 3 retries).\n"
+            f"Primary action: {normalized_primary}\n"
+            f"Fallback actions tried: {', '.join(fallback_names) if fallback_names else 'none'}\n"
+            "=" * 80 + "\n"
+        )
+        self.logger.error(error_msg)
+        return False
+
     async def _execute_action_with_tracking(
         self,
         action_name: str,
@@ -2500,6 +2718,82 @@ class PettAgent:
     ) -> bool:
         """Run an action coroutine and record it toward the daily requirement."""
         normalized_name = (action_name or "").upper() or "UNKNOWN"
+
+        # Track if pet was sleeping before we wake it
+        was_sleeping = False
+        needs_onchain_record = not skipped_onchain_recording
+
+        # Handle SLEEP action specially: if pet is already sleeping and we need on-chain record,
+        # we need to wake first, then sleep again to get the record
+        if normalized_name == "SLEEP":
+            if not self.websocket_client:
+                self.logger.error("❌ No WebSocket client for SLEEP action")
+                return False
+
+            try:
+                pet_data = self.websocket_client.get_pet_data()
+                if pet_data:
+                    is_sleeping = bool(pet_data.get("sleeping", False))
+                    if is_sleeping and needs_onchain_record:
+                        # Pet is sleeping - wake it first, then sleep again for on-chain record
+                        self.logger.info(
+                            "🧾 Pet is sleeping; waking briefly then re-sleeping for on-chain record"
+                        )
+                        woke = await self.websocket_client.sleep_pet(
+                            record_on_chain=False
+                        )
+                        if not woke:
+                            self.logger.warning(
+                                "⚠️ Failed to wake sleeping pet for SLEEP action recording"
+                            )
+                            return False
+                        await asyncio.sleep(
+                            1.5
+                        )  # Give it a moment before sleeping again
+                        # Now sleep again, this time with on-chain recording
+                        try:
+                            result = await action_callable()
+                            success = bool(result)
+                        except Exception as exc:
+                            self.logger.error("❌ SLEEP action raised: %s", exc)
+                            success = False
+
+                        # Log progress if successful
+                        if success:
+                            await self._log_action_progress(
+                                normalized_name,
+                                skipped_onchain_recording=skipped_onchain_recording,
+                            )
+
+                        try:
+                            await self._maybe_call_staking_checkpoint()
+                        except Exception as exc:
+                            self.logger.debug(
+                                "Liveness checkpoint check after %s action failed: %s",
+                                normalized_name,
+                                exc,
+                            )
+                        try:
+                            await self._maybe_checkpoint_epoch_end(
+                                f"action:{normalized_name}"
+                            )
+                        except Exception as exc:
+                            self.logger.debug(
+                                "Checkpoint trigger after %s action failed: %s",
+                                normalized_name,
+                                exc,
+                            )
+                        return success
+            except Exception as exc:
+                self.logger.warning(
+                    "⚠️ Error checking sleep state for SLEEP action: %s", exc
+                )
+                # Fall through to normal execution
+
+        # Ensure pet is awake before performing any action (except SLEEP, which we handled above)
+        if normalized_name != "SLEEP":
+            was_sleeping = await self._ensure_pet_is_awake()
+
         success = False
         try:
             result = await action_callable()
@@ -2520,6 +2814,20 @@ class PettAgent:
             await self._log_action_progress(
                 normalized_name, skipped_onchain_recording=skipped_onchain_recording
             )
+
+        # If pet was sleeping before and action succeeded, consider returning to sleep
+        if was_sleeping and success and normalized_name != "SLEEP":
+            should_sleep = await self._should_return_to_sleep(was_sleeping)
+            if should_sleep and self.websocket_client:
+                try:
+                    # Put pet back to sleep without recording on-chain
+                    # (since we just performed an action, we don't need another on-chain record)
+                    await self.websocket_client.sleep_pet(record_on_chain=False)
+                    self.logger.info("🛌 Pet returned to sleep after action")
+                except Exception as exc:
+                    self.logger.debug(
+                        "Failed to return pet to sleep after action: %s", exc
+                    )
 
         try:
             await self._maybe_call_staking_checkpoint()
@@ -2630,20 +2938,21 @@ class PettAgent:
         stats: Dict[str, Any],
     ) -> bool:
         """Execute the highest priority action from the structured plan."""
-        for (
-            _priority,
+        candidates = self._build_structured_candidates(client, stats)
+        if not candidates:
+            # No candidates, use fallback mechanism with THROWBALL
+            return await self._execute_action_with_fallbacks(
+                client, "THROWBALL", client.throw_ball
+            )
+
+        # Try the first candidate with fallbacks
+        _priority, action_name, action_callable, allow_clean = candidates[0]
+        return await self._execute_action_with_fallbacks(
+            client,
             action_name,
             action_callable,
-            allow_clean,
-        ) in self._build_structured_candidates(client, stats):
-            success = await self._execute_action_with_tracking(
-                action_name,
-                action_callable,
-                treat_already_clean_as_success=allow_clean,
-            )
-            if success:
-                return True
-        return False
+            treat_already_clean_as_success=allow_clean,
+        )
 
     async def _random_action(self, client: PettWebSocketClient) -> None:
         actions = [
@@ -2828,42 +3137,12 @@ class PettAgent:
 
             # Priority 1: Rub (free action, doesn't depend on other stats)
             self.logger.info("🤗 Critical stats: attempting rub to improve happiness")
-            rub_success = await self._execute_action_with_tracking(
-                "RUB", client.rub_pet, treat_already_clean_as_success=True
+            rub_success = await self._execute_action_with_fallbacks(
+                client, "RUB", client.rub_pet, treat_already_clean_as_success=True
             )
             if rub_success:
                 self.logger.info("🤗 Rub performed; deferring other actions this cycle")
                 return
-
-            # Priority 2: Shower (free action, doesn't depend on other stats)
-            self.logger.info("🚿 Critical stats: attempting shower to improve hygiene")
-            shower_success = await self._execute_action_with_tracking(
-                "SHOWER", client.shower_pet, treat_already_clean_as_success=True
-            )
-            if shower_success:
-                self.logger.info(
-                    "🚿 Shower performed; deferring other actions this cycle"
-                )
-                return
-
-            # Priority 3: Sleep (free action, helps rebuild energy)
-            if not sleeping and energy < self.WAKE_ENERGY_THRESHOLD:
-                self.logger.info(
-                    "😴 Critical stats: attempting sleep to rebuild energy (energy %.1f%%)",
-                    energy,
-                )
-                sleep_success = await self._execute_action_with_tracking(
-                    "SLEEP", client.sleep_pet
-                )
-                if sleep_success:
-                    self.logger.info(
-                        "😴 Sleep performed; deferring other actions this cycle"
-                    )
-                    return
-
-            self.logger.warning(
-                "⚠️ All free action attempts (rubs, showers, sleep) failed for critical stats"
-            )
 
         if (
             economy_mode
@@ -2896,14 +3175,20 @@ class PettAgent:
                     await client.sleep_pet(record_on_chain=False)
                     await asyncio.sleep(0.5)
                     sleeping = False
-                await self._execute_action_with_tracking("SLEEP", client.sleep_pet)
-                return
+                success = await self._execute_action_with_fallbacks(
+                    client, "SLEEP", client.sleep_pet
+                )
+                if success:
+                    return
 
         # Top-priority: low energy -> sleep
         if not sleep_blocked and energy < self.LOW_ENERGY_THRESHOLD and not sleeping:
             self.logger.info("😴 Low energy detected; initiating sleep")
-            await self._execute_action_with_tracking("SLEEP", client.sleep_pet)
-            return
+            success = await self._execute_action_with_fallbacks(
+                client, "SLEEP", client.sleep_pet
+            )
+            if success:
+                return
         elif sleep_blocked and energy < self.LOW_ENERGY_THRESHOLD and not sleeping:
             self.logger.info(
                 "⚡️ Energy low but sleeping is disabled until stats recover"
@@ -2931,8 +3216,11 @@ class PettAgent:
                     "😴 KPI threshold met; scheduling additional sleep to rebuild energy (%.1f%%)",
                     energy,
                 )
-                await self._execute_action_with_tracking("SLEEP", client.sleep_pet)
-                return
+                success = await self._execute_action_with_fallbacks(
+                    client, "SLEEP", client.sleep_pet
+                )
+                if success:
+                    return
 
         # Manage transitions while the pet is already sleeping
         if sleeping:
@@ -3012,8 +3300,11 @@ class PettAgent:
         if hygiene < self.LOW_THRESHOLD:
             # Small randomness to occasionally do a different engaging action
             self.logger.info("🚿 Low hygiene detected; showering pet")
-            await self._execute_action_with_tracking("SHOWER", client.shower_pet)
-            return
+            success = await self._execute_action_with_fallbacks(
+                client, "SHOWER", client.shower_pet
+            )
+            if success:
+                return
 
         # Priority 2: low hunger -> use AI decision engine to pick best food
         if hunger < self.LOW_THRESHOLD:
@@ -3042,34 +3333,11 @@ class PettAgent:
                             return False
                     return False
 
-                feed_success = await self._execute_action_with_tracking(
-                    "CONSUMABLES_USE", feed_action
+                feed_success = await self._execute_action_with_fallbacks(
+                    client, "CONSUMABLES_USE", feed_action
                 )
-                if not feed_success:
-                    self.logger.warning(
-                        "⚠️ AI food selection failed; skipping fallback use"
-                    )
-                    # try to rub, sleep or bath depending on the stats\
-                    if hygiene < self.LOW_THRESHOLD:
-                        self.logger.info("🚿 Low hygiene detected; showering pet")
-                        await self._execute_action_with_tracking(
-                            "SHOWER", client.shower_pet
-                        )
-                        return
-                    if energy < self.LOW_ENERGY_THRESHOLD:
-                        self.logger.info("😴 Low energy detected; sleeping pet")
-                        await self._execute_action_with_tracking(
-                            "SLEEP", client.sleep_pet
-                        )
-                        return
-                    if happiness < self.LOW_THRESHOLD:
-                        self.logger.info(
-                            "🎾 Low happiness detected; throwing ball 3 times"
-                        )
-                        await self._execute_action_with_tracking(
-                            "THROWBALL", client.throw_ball
-                        )
-                        return
+                if feed_success:
+                    return
             else:
                 self.logger.warning(
                     "⚠️ No decision engine available; skipping food selection"
@@ -3088,15 +3356,23 @@ class PettAgent:
 
         # Priority 3: low happiness -> throw ball 3 times with delays
         if happiness < self.LOW_THRESHOLD:
-            self.logger.info("🎾 Low happiness detected; throwing ball 3 times")
-            for _ in range(3):
-                await self._execute_action_with_tracking("THROWBALL", client.throw_ball)
-                await asyncio.sleep(0.5)
-            return
+            self.logger.info("🎾 Low happiness detected; throwing ball")
+            success = await self._execute_action_with_fallbacks(
+                client, "THROWBALL", client.throw_ball
+            )
+            if success:
+                return
 
         # Fallback: random action
-        self.logger.info("🎲 No priority actions; performing random_action")
-        await self._random_action(client)
+        self.logger.info(
+            "🎲 No priority actions; performing random action with fallbacks"
+        )
+        # Use THROWBALL as the primary random action since it's the most reliable
+        success = await self._execute_action_with_fallbacks(
+            client, "THROWBALL", client.throw_ball
+        )
+        if success:
+            return
 
     async def run(self):
         """Run the Pett Agent."""

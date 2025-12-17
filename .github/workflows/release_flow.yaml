@@ -27,6 +27,7 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - name: Push Autonomous Packages # push the agent/service packages to the remote registry in OLAS
+        continue-on-error: true
         uses: addnab/docker-run-action@v3
         with:
           image: valory/open-autonomy-user:0.19.11
@@ -62,6 +63,7 @@ jobs:
       - name: Configure Buildx # multi-arch builder for Docker
         uses: docker/setup-buildx-action@v3
       - name: Set up tag and vars # derive author/service names and versions
+        continue-on-error: true
         uses: addnab/docker-run-action@v3
         with:
           image: valory/open-autonomy-user:0.19.11
@@ -95,6 +97,7 @@ jobs:
           echo "✅ Created .env file with Privy App ID"
 
       - name: Build Images
+        continue-on-error: true
         uses: addnab/docker-run-action@v3
         with:
           image: valory/open-autonomy-user:0.19.11

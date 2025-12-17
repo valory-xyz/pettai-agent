@@ -19,6 +19,7 @@ class AgentPerformanceStore:
 
     def __init__(self, logger: logging.Logger) -> None:
         self._logger = logger
+        self._root_path: Optional[Path] = None
         probable_root_path_names_env = [
             "CONNECTION_CONFIGS_CONFIG_STORE_PATH",
             "CONNECTION_CONFIGS_STORE_PATH",

@@ -3,17 +3,19 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../providers/AuthProvider';
 
 const AllSet = () => {
-	const { authenticated, ready } = useAuth();
+	const { authenticated } = useAuth();
 	const navigate = useNavigate();
 
 	useEffect(() => {
-		if (!ready) return;
-		if (authenticated) {
-			navigate('/dashboard', { replace: true });
-		} else {
-			navigate('/login', { replace: true });
-		}
-	}, [authenticated, navigate, ready]);
+		// wait a bit before navigating
+		setTimeout(() => {
+			if (authenticated) {
+				navigate('/dashboard', { replace: true });
+			} else {
+				navigate('/login', { replace: true });
+			}
+		}, 200);
+	}, [authenticated, navigate]);
 
 	return null;
 };

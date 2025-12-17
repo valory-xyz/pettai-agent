@@ -430,3 +430,5 @@ hash_id
 agent/log.txt
 *.pem
 *.b64
+
+tests/__pycache__/

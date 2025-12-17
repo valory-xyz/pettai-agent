@@ -1,290 +1,916 @@
-import json
+"""
+Pet Decision Maker - Clean, testable decision logic for pet actions.
+
+This module provides a prioritized, deterministic decision-making system
+for choosing pet actions based on current stats and constraints.
+"""
+
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from typing import (
+    Any,
+    Awaitable,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Tuple,
+)
 import logging
-from typing import Any, Dict, List, Optional, Tuple, Callable
-
-from langgraph.prebuilt import create_react_agent
-from langgraph.checkpoint.memory import MemorySaver
-
-from .backend_chat_model import BackendChatModel
-from .pett_websocket_client import PettWebSocketClient
-from .pett_tools import PettTools
 
 logger = logging.getLogger(__name__)
 
 
-class PetDecisionEngine:
-    """Centralizes model, tools binding, and AI-driven decisions for the pet."""
+class ActionType(Enum):
+    """All possible pet actions."""
 
-    def __init__(
-        self,
-        websocket_client: PettWebSocketClient,
-        *,
-        chat_model: Optional[Any] = None,
-    ):
-        self.websocket_client = websocket_client
-        self.pett_tools = PettTools(self.websocket_client)
-        # Optional prompt recorder: (kind, prompt, context)
-        self._prompt_recorder: Optional[
-            Callable[[str, str, Optional[Dict[str, Any]]], None]
-        ] = None
+    SLEEP = auto()
+    SHOWER = auto()
+    RUB = auto()
+    THROWBALL = auto()
+    CONSUMABLES_USE = auto()
+    CONSUMABLES_BUY = auto()
+    NONE = auto()
 
-        # Initialize model, memory, tools and agent once
-        self.model = chat_model or BackendChatModel(
-            self.websocket_client,
-            request_metadata={"component": "pet_decision_engine"},
-        )
-        self.memory = MemorySaver()
-        self.tools = self.pett_tools.create_tools()
-        self.bound_model = self.model.bind_tools(self.tools)  # type: ignore
 
-        self.system_message = (
-            "You are PetDecisionEngine, an autonomous pet caretaker. "
-            "Always decide the next best action given the pet's current "
-            "stats and available tools. "
-            "Prefer actions that improve low stats "
-            "(hunger, hygiene, energy, happiness). "
-            "When hunger is low, analyze provided mall JSON to determine "
-            "which owned consumable increases hunger the most, then use it. "
-            "If every core stat (hunger, health, hygiene, happiness) "
-            "drops below 5, avoid sleeping entirely and immediately use "
-            "consumables that boost hunger and health until they recover. "
-            "Respond succinctly with the decided action(s) and parameters, "
-            "and then execute using bound tools."
-        )
-        self.agent = create_react_agent(
-            self.bound_model,
-            self.tools,
-            checkpointer=self.memory,
-            prompt=self.system_message,
-        )
+@dataclass
+class PetStats:
+    """Current pet statistics (all values 0-100)."""
 
-    def set_prompt_recorder(
-        self, recorder: Optional[Callable[[str, str, Optional[Dict[str, Any]]], None]]
-    ) -> None:
-        """Set a callback to record prompts sent to the LLM."""
-        self._prompt_recorder = recorder
+    hunger: float = 0.0
+    health: float = 0.0
+    energy: float = 0.0
+    happiness: float = 0.0
+    hygiene: float = 0.0
 
-    async def choose_food_from_kitchen(
-        self,
-        kitchen_json: str,
-        pet_stats: Optional[Dict[str, Any]] = None,
-        allowed_blueprints: Optional[List[str]] = None,
-    ) -> Optional[str]:
-        """Ask the model to pick the owned consumable that best increases hunger.
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "PetStats":
+        """Create PetStats from a dictionary."""
 
-        Returns the consumable instance ID if found, else None.
-        """
-        if not kitchen_json or kitchen_json.startswith("❌"):
-            logger.warning(
-                "[DecisionEngine] No valid mall data provided for food choice"
-            )
-            return None
-
-        def stats_zero(values: Optional[Dict[str, Any]]) -> bool:
-            if not isinstance(values, dict):
-                return False
-            required_keys = ("hunger", "health", "hygiene", "happiness", "energy")
-            for key in required_keys:
-                if key not in values:
-                    return False
-                try:
-                    if float(values.get(key, 0)) > 0.0:
-                        return False
-                except Exception:
-                    return False
-            return True
-
-        potion_allowed = stats_zero(pet_stats)
-
-        def is_potion_item(summary: Dict[str, Any]) -> bool:
-            blueprint_id = str(summary.get("blueprintID", "") or "").upper()
-            name = str(summary.get("name", "") or "").upper()
-            return blueprint_id == "POTION" or name == "POTION"
-
-        # Parse and summarize kitchen payload to a compact list the model can reason about
-        try:
-            payload = (
-                json.loads(kitchen_json)
-                if isinstance(kitchen_json, str)
-                else kitchen_json
-            )
-            raw_items: List[Dict[str, Any]] = payload.get("consumables", []) or []
-            logger.info(
-                f"[DecisionEngine] Found {len(raw_items)} consumables in kitchen"
-            )
-        except Exception as e:
-            logger.warning(f"[DecisionEngine] Failed to parse kitchen JSON: {e}")
-            return None
-
-        def as_food_summary(item: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-            bp = item.get("blueprint", {}) or {}
-            if (bp.get("type") or "").upper() != "FOOD":
-                return None
-            # Use instance ID if available, otherwise fall back to blueprintID
-            consumable_id = item.get("id") or str(item.get("blueprintID", "")).upper()
-            if not consumable_id:
-                return None
-            return {
-                "id": consumable_id,
-                "blueprintID": str(item.get("blueprintID", "")).upper(),
-                "name": bp.get("name", ""),
-                "hunger": int(bp.get("hunger", 0) or 0),
-                "happiness": int(bp.get("happiness", 0) or 0),
-                "health": int(bp.get("health", 0) or 0),
-            }
-
-        food_items: List[Dict[str, Any]] = []
-        for it in raw_items:
-            summary = as_food_summary(it)
-            if summary and summary.get("id"):
-                food_items.append(summary)
-
-        if not food_items:
-            logger.info("[DecisionEngine] No FOOD items available in kitchen payload")
-            return None
-
-        if not potion_allowed:
-            filtered_without_potion = [
-                item for item in food_items if not is_potion_item(item)
-            ]
-            if not filtered_without_potion:
-                logger.info(
-                    "[DecisionEngine] Potions ignored until all stats reach 0; no other FOOD available"
-                )
-                return None
-            food_items = filtered_without_potion
-
-        if allowed_blueprints:
-            allowed = {bp.upper() for bp in allowed_blueprints if bp}
-            filtered_food: List[Dict[str, Any]] = []
-            for item in food_items:
-                blueprint_id = str(item.get("blueprintID", "") or "").upper()
-                consumable_id = str(item.get("id", "") or "").upper()
-                name = str(item.get("name", "") or "").upper()
-                if is_potion_item(item) and not potion_allowed:
-                    continue
-                if (
-                    (blueprint_id and blueprint_id in allowed)
-                    or (consumable_id and consumable_id in allowed)
-                    or (name and name in allowed)
-                ):
-                    filtered_food.append(item)
-
-            if not filtered_food:
-                logger.info(
-                    "[DecisionEngine] No FOOD items matched allowed inventory filter (%d candidates)",
-                    len(allowed),
-                )
-                return None
-
-            food_items = filtered_food
-            logger.info(
-                f"[DecisionEngine] Filtered food choices to {len(food_items)} owned items"
-            )
-
-        logger.info(f"[DecisionEngine] Found {len(food_items)} food items in kitchen")
-
-        # Deterministic fallback: best hunger, then happiness desc, then health desc
-        def score_food(x: Dict[str, Any]) -> Tuple[int, int, int]:
-            return (
-                int(x.get("hunger", 0) or 0),
-                int(x.get("happiness", 0) or 0),
-                int(x.get("health", -999999) or -999999),
-            )
-
-        best_food = max(food_items, key=score_food)
-
-        # Build stats context
-        stats_context = ""
-        if pet_stats:
-            stats_json = json.dumps(pet_stats, ensure_ascii=False)
-            stats_context = f"CURRENT_PET_STATS:\n{stats_json}\n\n"
-
-        # Strengthened prompt: provide concise summary and clear instructions
-        summary_json = json.dumps(food_items[:20], ensure_ascii=False)
-        user_prompt = (
-            "You are choosing ONE food blueprintID item to feed the pet.\n"
-            f"{stats_context}"
-            "Rules:\n"
-            "- Only choose from FOOD items provided below (ignore potions/special).\n"
-            "- Consider the pet's current stats when making the decision.\n"
-            "- Maximize hunger increase as primary objective.\n"
-            "- If there is a tie on hunger, prefer higher happiness.\n"
-            "- If still tied, prefer higher (less negative) health.\n"
-            "- Return ONLY the 'blueprintID' field value (the consumable blueprintID). No extra text.\n\n"
-            f"FOOD_ITEMS (JSON array with fields id,blueprintID,name,hunger,happiness,health):\n{summary_json}\n"
-        )
-
-        # Log prompt (trimmed to 200 chars)
-        prompt_preview = (
-            user_prompt[:1000] + "..." if len(user_prompt) > 1000 else user_prompt
-        )
-        logger.info(f"[DecisionEngine] 🧠 Prompt: {prompt_preview}")
-        if self._prompt_recorder:
+        def to_float(v: Any) -> float:
+            if v is None:
+                return 0.0
             try:
-                self._prompt_recorder("food_choice", user_prompt, None)
-            except Exception:
-                pass
+                return float(str(v))
+            except (ValueError, TypeError):
+                return 0.0
 
-        messages = [
-            {"role": "system", "content": self.system_message},
-            {"role": "user", "content": user_prompt},
-        ]
-
-        config = {"configurable": {"thread_id": "pet_food_choice"}}
-        result = await self.agent.ainvoke({"messages": messages}, config=config)  # type: ignore
-        text = ""
-        if isinstance(result, dict) and "messages" in result and result["messages"]:
-            last = result["messages"][-1]
-            text = getattr(last, "content", "") or ""
-
-        choice = (text or "").strip()
-
-        # Log the decision
-        decision_text = choice if choice and choice != "NONE" else "No food selected"
-        logger.info(f"[DecisionEngine] ✅ Food Decision: {decision_text}")
-
-        # If model fails, use deterministic fallback
-        if not choice or choice.upper() == "NONE":
-            fallback_id = best_food.get("id")
-            if fallback_id:
-                logger.info(
-                    f"[DecisionEngine] 🔁 Falling back to deterministic best FOOD (ID: {fallback_id})"
-                )
-                return fallback_id
-            return None
-
-        return choice
-
-    async def feed_best_owned_food(
-        self,
-        pet_stats: Optional[Dict[str, Any]] = None,
-        allowed_blueprints: Optional[List[str]] = None,
-    ) -> bool:
-        """Fetch mall data and ask the model which owned food to use."""
-        logger.info("[DecisionEngine] 🍔 Starting AI-driven food selection process")
-
-        mall = await self.websocket_client.get_kitchen_data(timeout=10)
-        choice = await self.choose_food_from_kitchen(
-            mall, pet_stats, allowed_blueprints=allowed_blueprints
+        return cls(
+            hunger=to_float(data.get("hunger", 0)),
+            health=to_float(data.get("health", 0)),
+            energy=to_float(data.get("energy", 0)),
+            happiness=to_float(data.get("happiness", 0)),
+            hygiene=to_float(data.get("hygiene", 0)),
         )
 
-        logger.info(f"[DecisionEngine] 🍔 Choice: {choice}")
+    def to_dict(self) -> Dict[str, float]:
+        return {
+            "hunger": self.hunger,
+            "health": self.health,
+            "energy": self.energy,
+            "happiness": self.happiness,
+            "hygiene": self.hygiene,
+        }
 
-        if not choice:
-            logger.warning("[DecisionEngine] ❌ No suitable food found to feed pet")
-            return False
-
-        logger.info(
-            f"[DecisionEngine] 🍖 Feeding pet with consumable ID: {choice} (type: {type(choice).__name__})"
+    def is_all_zero(self) -> bool:
+        """Check if all stats are at 0."""
+        return all(
+            v <= 0.0
+            for v in [
+                self.hunger,
+                self.health,
+                self.energy,
+                self.happiness,
+                self.hygiene,
+            ]
         )
-        success = await self.websocket_client.use_consumable(choice)
 
-        if success:
-            logger.info(
-                f"[DecisionEngine] ✅ Feeding {choice} confirmed (on-chain recordAction will be scheduled by client)"
+    def is_all_full(self) -> bool:
+        """Check if all stats are at 100."""
+        return all(
+            v >= 100.0
+            for v in [
+                self.hunger,
+                self.health,
+                self.energy,
+                self.happiness,
+                self.hygiene,
+            ]
+        )
+
+    def is_critical(self, threshold: float = 5.0) -> bool:
+        """Check if all core stats are below critical threshold."""
+        return all(
+            v < threshold
+            for v in [self.hunger, self.health, self.hygiene, self.happiness]
+        )
+
+
+@dataclass
+class PetContext:
+    """Full context for making decisions."""
+
+    stats: PetStats
+    is_sleeping: bool = False
+    is_dead: bool = False
+    token_balance: float = 0.0
+    owned_consumables: List[str] = field(default_factory=list)
+    actions_recorded_this_epoch: int = 0
+    required_actions_per_epoch: int = 8
+
+    @property
+    def needs_more_onchain_actions(self) -> bool:
+        """Check if we still need to record more on-chain actions."""
+        return self.actions_recorded_this_epoch < self.required_actions_per_epoch
+
+    @property
+    def remaining_required_actions(self) -> int:
+        """Number of on-chain actions still needed."""
+        return max(
+            0, self.required_actions_per_epoch - self.actions_recorded_this_epoch
+        )
+
+
+@dataclass
+class ActionDecision:
+    """Result of the decision-making process."""
+
+    action: ActionType
+    reason: str
+    should_record_onchain: bool
+    params: Dict[str, Any] = field(default_factory=dict)
+    fallback_from: Optional[ActionType] = None
+    stats_snapshot: Optional[Dict[str, float]] = None
+
+    def __str__(self) -> str:
+        onchain_str = "🔗 ON-CHAIN" if self.should_record_onchain else "📝 OFF-CHAIN"
+        fallback_str = (
+            f" (fallback from {self.fallback_from.name})" if self.fallback_from else ""
+        )
+        return f"{onchain_str} {self.action.name}{fallback_str}: {self.reason}"
+
+
+class ConsumableSelector:
+    """
+    Selects the best consumable to use based on priority/effectiveness.
+
+    Food priority (hunger recovery):
+        SUSHI > STEAK > PIZZA > BURGER > SALAD > COOKIE
+
+    Health priority (health recovery):
+        LARGE_POTION > POTION > SMALL_POTION > SALAD
+
+    Note: SALAD provides both food and health benefits.
+    """
+
+    # Food items ordered by effectiveness (best first)
+    FOOD_PRIORITY = [
+        "SUSHI",  # Best food
+        "STEAK",
+        "PIZZA",
+        "BURGER",
+        "SALAD",  # Also gives health
+        "COOKIE",  # Least effective
+    ]
+
+    # Health items ordered by effectiveness (best first)
+    HEALTH_PRIORITY = [
+        "LARGE_POTION",
+        "POTION",
+        "SMALL_POTION",
+        "SALAD",  # Also gives food
+    ]
+
+    # All consumable types
+    ALL_FOOD = {"SUSHI", "STEAK", "PIZZA", "BURGER", "SALAD", "COOKIE"}
+    ALL_HEALTH = {"LARGE_POTION", "POTION", "SMALL_POTION", "SALAD"}
+
+    @classmethod
+    def get_best_food(cls, owned_consumables: List[str]) -> Optional[str]:
+        """
+        Get the best food item from owned consumables.
+
+        Returns:
+            Best food consumable ID or None if no food owned.
+        """
+        owned_upper = [c.upper() for c in owned_consumables]
+
+        for food in cls.FOOD_PRIORITY:
+            if food in owned_upper:
+                # Return original case from owned list
+                idx = owned_upper.index(food)
+                return owned_consumables[idx]
+
+        return None
+
+    @classmethod
+    def get_best_health_item(cls, owned_consumables: List[str]) -> Optional[str]:
+        """
+        Get the best health item from owned consumables.
+
+        Returns:
+            Best health consumable ID or None if no health items owned.
+        """
+        owned_upper = [c.upper() for c in owned_consumables]
+
+        for health in cls.HEALTH_PRIORITY:
+            if health in owned_upper:
+                idx = owned_upper.index(health)
+                return owned_consumables[idx]
+
+        return None
+
+    @classmethod
+    def get_any_consumable(cls, owned_consumables: List[str]) -> Optional[str]:
+        """
+        Get any consumable (prefer food over health items for critical state).
+
+        Returns:
+            Best consumable ID or None if nothing owned.
+        """
+        # Try food first (more universally useful)
+        food = cls.get_best_food(owned_consumables)
+        if food:
+            return food
+
+        # Then health items
+        health = cls.get_best_health_item(owned_consumables)
+        if health:
+            return health
+
+        # Return first available if any
+        return owned_consumables[0] if owned_consumables else None
+
+    @classmethod
+    def has_food(cls, owned_consumables: List[str]) -> bool:
+        """Check if any food items are owned."""
+        owned_upper = {c.upper() for c in owned_consumables}
+        return bool(owned_upper & cls.ALL_FOOD)
+
+    @classmethod
+    def has_health_item(cls, owned_consumables: List[str]) -> bool:
+        """Check if any health items are owned."""
+        owned_upper = {c.upper() for c in owned_consumables}
+        return bool(owned_upper & cls.ALL_HEALTH)
+
+    @classmethod
+    def get_best_to_buy_for_hunger(cls) -> str:
+        """Get the best food item to buy when hungry."""
+        return "BURGER"  # Good balance of cost and effectiveness
+
+    @classmethod
+    def get_best_to_buy_for_health(cls) -> str:
+        """Get the best health item to buy when low health."""
+        return "SMALL_POTION"  # Most cost-effective
+
+
+class ActionConditions:
+    """
+    Defines conditions for when each action can be performed.
+
+    Conditions (action can only be performed if condition is met):
+    - RUB: hygiene < 75
+    - SHOWER: hygiene < 75
+    - SLEEP: always possible
+    - THROWBALL: health >= 15 OR hunger >= 15 OR energy >= 15
+    - CONSUMABLES_USE: we have any consumable
+    - CONSUMABLES_BUY: we have enough tokens (>= threshold)
+    """
+
+    HYGIENE_THRESHOLD = 75.0
+    THROWBALL_MIN_STAT = 15.0
+    MIN_TOKENS_FOR_BUY = 50.0  # Minimum tokens needed to buy a consumable
+
+    @classmethod
+    def can_rub(cls, stats: PetStats) -> Tuple[bool, str]:
+        """Check if RUB action is possible."""
+        if stats.hygiene < cls.HYGIENE_THRESHOLD:
+            return True, f"hygiene ({stats.hygiene:.1f}) < {cls.HYGIENE_THRESHOLD}"
+        return False, f"hygiene ({stats.hygiene:.1f}) >= {cls.HYGIENE_THRESHOLD}"
+
+    @classmethod
+    def can_shower(cls, stats: PetStats) -> Tuple[bool, str]:
+        """Check if SHOWER action is possible."""
+        if stats.hygiene < cls.HYGIENE_THRESHOLD:
+            return True, f"hygiene ({stats.hygiene:.1f}) < {cls.HYGIENE_THRESHOLD}"
+        return False, f"hygiene ({stats.hygiene:.1f}) >= {cls.HYGIENE_THRESHOLD}"
+
+    @classmethod
+    def can_sleep(cls, stats: PetStats) -> Tuple[bool, str]:
+        """Check if SLEEP action is possible. Always returns True."""
+        return True, "sleep is always possible"
+
+    @classmethod
+    def can_throwball(cls, stats: PetStats) -> Tuple[bool, str]:
+        """
+        Check if THROWBALL action is possible.
+        Cannot throwball if ALL of health, hunger, and energy are below minimum.
+        """
+        below_threshold = (
+            stats.health < cls.THROWBALL_MIN_STAT
+            and stats.hunger < cls.THROWBALL_MIN_STAT
+            and stats.energy < cls.THROWBALL_MIN_STAT
+        )
+        if not below_threshold:
+            return (
+                True,
+                f"at least one stat (health/hunger/energy) >= {cls.THROWBALL_MIN_STAT}",
             )
-        else:
-            logger.warning(f"[DecisionEngine] ❌ Feeding {choice} failed")
+        return False, f"all core stats below {cls.THROWBALL_MIN_STAT}"
 
-        return success
+    @classmethod
+    def can_use_consumable(cls, context: PetContext) -> Tuple[bool, str]:
+        """Check if CONSUMABLES_USE action is possible."""
+        if context.owned_consumables and len(context.owned_consumables) > 0:
+            return True, f"owns {len(context.owned_consumables)} consumable(s)"
+        return False, "no consumables owned"
+
+    @classmethod
+    def can_buy_consumable(cls, context: PetContext) -> Tuple[bool, str]:
+        """Check if CONSUMABLES_BUY action is possible."""
+        if context.token_balance >= cls.MIN_TOKENS_FOR_BUY:
+            return (
+                True,
+                f"balance ({context.token_balance:.2f}) >= {cls.MIN_TOKENS_FOR_BUY}",
+            )
+        return (
+            False,
+            f"balance ({context.token_balance:.2f}) < {cls.MIN_TOKENS_FOR_BUY}",
+        )
+
+    @classmethod
+    def get_all_possible_actions(
+        cls, context: PetContext
+    ) -> List[Tuple[ActionType, str]]:
+        """Get all actions that are currently possible with their reasons."""
+        possible = []
+
+        can, reason = cls.can_sleep(context.stats)
+        if can:
+            possible.append((ActionType.SLEEP, reason))
+
+        can, reason = cls.can_shower(context.stats)
+        if can:
+            possible.append((ActionType.SHOWER, reason))
+
+        can, reason = cls.can_rub(context.stats)
+        if can:
+            possible.append((ActionType.RUB, reason))
+
+        can, reason = cls.can_throwball(context.stats)
+        if can:
+            possible.append((ActionType.THROWBALL, reason))
+
+        can, reason = cls.can_use_consumable(context)
+        if can:
+            possible.append((ActionType.CONSUMABLES_USE, reason))
+
+        can, reason = cls.can_buy_consumable(context)
+        if can:
+            possible.append((ActionType.CONSUMABLES_BUY, reason))
+
+        return possible
+
+
+class PetDecisionMaker:
+    """
+    Makes decisions about which action to perform based on pet state.
+
+    Decision Priority (highest to lowest):
+    1. CRITICAL: If all stats are near 0, use/buy consumables or sleep
+    2. LOW_ENERGY: If energy < 25 and not critical, sleep
+    3. LOW_HEALTH: If health < 70, use health consumable
+    4. LOW_HUNGER: If hunger < 70, use food consumable
+    5. LOW_HYGIENE: If hygiene < 70, shower
+    6. LOW_HAPPINESS: If happiness < 70, throwball or rub
+    7. MAINTENANCE: Otherwise, perform any valid action (prefer throwball for tokens)
+
+    Special Rules:
+    - If sleeping with 0 energy and need on-chain record, wake and re-sleep
+    - Always ensure we get an on-chain record if needed
+    - Fallback to RUB/SLEEP if primary action is not possible
+    """
+
+    # Thresholds
+    CRITICAL_THRESHOLD = 5.0
+    LOW_ENERGY_THRESHOLD = 25.0
+    LOW_STAT_THRESHOLD = 70.0
+    WAKE_ENERGY_THRESHOLD = 65.0
+
+    def __init__(self, logger: Optional[logging.Logger] = None):
+        self.logger = logger or logging.getLogger(__name__)
+        self._last_decision: Optional[ActionDecision] = None
+        self._decision_history: List[ActionDecision] = []
+
+    def decide(self, context: PetContext) -> ActionDecision:
+        """
+        Main decision method. Returns the best action to perform.
+
+        Args:
+            context: Full pet context including stats, inventory, etc.
+
+        Returns:
+            ActionDecision with the chosen action and reasoning
+        """
+        stats = context.stats
+        should_record = context.needs_more_onchain_actions
+
+        self._log_context(context)
+
+        # Check if pet is dead - no actions possible
+        if context.is_dead:
+            decision = ActionDecision(
+                action=ActionType.NONE,
+                reason="Pet is dead - no actions possible",
+                should_record_onchain=False,
+                stats_snapshot=stats.to_dict(),
+            )
+            self._record_decision(decision)
+            return decision
+
+        # Special case: sleeping with 0 energy and need on-chain record
+        if context.is_sleeping and stats.energy <= 0 and should_record:
+            decision = ActionDecision(
+                action=ActionType.SLEEP,
+                reason="Sleeping with 0 energy - need to wake and re-sleep for on-chain record",
+                should_record_onchain=True,
+                params={"wake_first": True},
+                stats_snapshot=stats.to_dict(),
+            )
+            self._record_decision(decision)
+            return decision
+
+        # If sleeping and energy is recovering, stay asleep (unless critical)
+        if context.is_sleeping and stats.energy < self.WAKE_ENERGY_THRESHOLD:
+            if not stats.is_critical(self.CRITICAL_THRESHOLD):
+                decision = ActionDecision(
+                    action=ActionType.SLEEP,
+                    reason=f"Still resting - energy ({stats.energy:.1f}) < {self.WAKE_ENERGY_THRESHOLD}",
+                    should_record_onchain=should_record,
+                    params={"stay_asleep": True},
+                    stats_snapshot=stats.to_dict(),
+                )
+                self._record_decision(decision)
+                return decision
+
+        # Priority 1: CRITICAL - all stats near 0
+        if stats.is_critical(self.CRITICAL_THRESHOLD):
+            decision = self._handle_critical_stats(context, should_record)
+            self._record_decision(decision)
+            return decision
+
+        # Priority 2: LOW_ENERGY - sleep if very low
+        if stats.energy < self.LOW_ENERGY_THRESHOLD:
+            can_sleep, reason = ActionConditions.can_sleep(stats)
+            if can_sleep:
+                decision = ActionDecision(
+                    action=ActionType.SLEEP,
+                    reason=f"Low energy ({stats.energy:.1f}) - initiating sleep",
+                    should_record_onchain=should_record,
+                    stats_snapshot=stats.to_dict(),
+                )
+                self._record_decision(decision)
+                return decision
+
+        # Priority 3: LOW_HEALTH - use health consumable
+        if stats.health < self.LOW_STAT_THRESHOLD:
+            decision = self._try_health_recovery(context, should_record)
+            if decision.action != ActionType.NONE:
+                self._record_decision(decision)
+                return decision
+
+        # Priority 4: LOW_HUNGER - use food consumable
+        if stats.hunger < self.LOW_STAT_THRESHOLD:
+            decision = self._try_hunger_recovery(context, should_record)
+            if decision.action != ActionType.NONE:
+                self._record_decision(decision)
+                return decision
+
+        # Priority 5: LOW_HYGIENE - shower
+        if stats.hygiene < self.LOW_STAT_THRESHOLD:
+            can_shower, reason = ActionConditions.can_shower(stats)
+            if can_shower:
+                decision = ActionDecision(
+                    action=ActionType.SHOWER,
+                    reason=f"Low hygiene ({stats.hygiene:.1f}) - showering",
+                    should_record_onchain=should_record,
+                    stats_snapshot=stats.to_dict(),
+                )
+                self._record_decision(decision)
+                return decision
+
+        # Priority 6: LOW_HAPPINESS - throwball or rub
+        if stats.happiness < self.LOW_STAT_THRESHOLD:
+            decision = self._try_happiness_recovery(context, should_record)
+            if decision.action != ActionType.NONE:
+                self._record_decision(decision)
+                return decision
+
+        # Priority 7: MAINTENANCE - all stats are okay, do maintenance actions
+        decision = self._do_maintenance_action(context, should_record)
+        self._record_decision(decision)
+        return decision
+
+    def _handle_critical_stats(
+        self, context: PetContext, should_record: bool
+    ) -> ActionDecision:
+        """Handle critical state where all stats are very low."""
+        stats = context.stats
+
+        self.logger.warning(
+            "⚠️ CRITICAL: All stats below %.1f - prioritizing recovery",
+            self.CRITICAL_THRESHOLD,
+        )
+
+        # Try consumables first - use best available
+        can_use, reason = ActionConditions.can_use_consumable(context)
+        if can_use:
+            best_consumable = ConsumableSelector.get_any_consumable(
+                context.owned_consumables
+            )
+            return ActionDecision(
+                action=ActionType.CONSUMABLES_USE,
+                reason=f"CRITICAL stats - using best consumable: {best_consumable}",
+                should_record_onchain=should_record,
+                params={
+                    "consumable_id": best_consumable,
+                    "action": "use_critical_consumable",
+                },
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Try buying consumables - prefer food in critical state
+        can_buy, reason = ActionConditions.can_buy_consumable(context)
+        if can_buy:
+            food_to_buy = ConsumableSelector.get_best_to_buy_for_hunger()
+            return ActionDecision(
+                action=ActionType.CONSUMABLES_BUY,
+                reason=f"CRITICAL stats - buying {food_to_buy} ({reason})",
+                should_record_onchain=should_record,
+                params={"consumable_id": food_to_buy, "amount": 1},
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Fallback to free actions: RUB first (improves happiness)
+        can_rub, reason = ActionConditions.can_rub(stats)
+        if can_rub:
+            return ActionDecision(
+                action=ActionType.RUB,
+                reason=f"CRITICAL stats, no consumables - rubbing pet ({reason})",
+                should_record_onchain=should_record,
+                fallback_from=ActionType.CONSUMABLES_USE,
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Fallback to SHOWER
+        can_shower, reason = ActionConditions.can_shower(stats)
+        if can_shower:
+            return ActionDecision(
+                action=ActionType.SHOWER,
+                reason=f"CRITICAL stats, no consumables - showering ({reason})",
+                should_record_onchain=should_record,
+                fallback_from=ActionType.RUB,
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Ultimate fallback: SLEEP (always possible)
+        return ActionDecision(
+            action=ActionType.SLEEP,
+            reason="CRITICAL stats - sleeping as last resort",
+            should_record_onchain=should_record,
+            fallback_from=ActionType.SHOWER,
+            stats_snapshot=stats.to_dict(),
+        )
+
+    def _try_health_recovery(
+        self, context: PetContext, should_record: bool
+    ) -> ActionDecision:
+        """Attempt to recover health using consumables."""
+        stats = context.stats
+
+        # Get best health item using ConsumableSelector
+        best_health = ConsumableSelector.get_best_health_item(context.owned_consumables)
+
+        if best_health:
+            return ActionDecision(
+                action=ActionType.CONSUMABLES_USE,
+                reason=f"Low health ({stats.health:.1f}) - using best health item: {best_health}",
+                should_record_onchain=should_record,
+                params={"consumable_id": best_health, "action": "use_best_health_item"},
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Try buying a health consumable
+        can_buy, reason = ActionConditions.can_buy_consumable(context)
+        if can_buy:
+            health_to_buy = ConsumableSelector.get_best_to_buy_for_health()
+            return ActionDecision(
+                action=ActionType.CONSUMABLES_BUY,
+                reason=f"Low health ({stats.health:.1f}) - buying {health_to_buy}",
+                should_record_onchain=should_record,
+                params={"consumable_id": health_to_buy, "amount": 1},
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Can't recover health - return NONE to try next priority
+        return ActionDecision(
+            action=ActionType.NONE,
+            reason=f"Low health ({stats.health:.1f}) but no way to recover",
+            should_record_onchain=False,
+            stats_snapshot=stats.to_dict(),
+        )
+
+    def _try_hunger_recovery(
+        self, context: PetContext, should_record: bool
+    ) -> ActionDecision:
+        """Attempt to recover hunger using consumables."""
+        stats = context.stats
+
+        # Get best food using ConsumableSelector
+        best_food = ConsumableSelector.get_best_food(context.owned_consumables)
+
+        if best_food:
+            return ActionDecision(
+                action=ActionType.CONSUMABLES_USE,
+                reason=f"Low hunger ({stats.hunger:.1f}) - feeding best food: {best_food}",
+                should_record_onchain=should_record,
+                params={"consumable_id": best_food, "action": "feed_best_owned_food"},
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Try buying food
+        can_buy, reason = ActionConditions.can_buy_consumable(context)
+        if can_buy:
+            food_to_buy = ConsumableSelector.get_best_to_buy_for_hunger()
+            return ActionDecision(
+                action=ActionType.CONSUMABLES_BUY,
+                reason=f"Low hunger ({stats.hunger:.1f}) - buying {food_to_buy}",
+                should_record_onchain=should_record,
+                params={"consumable_id": food_to_buy, "amount": 1},
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Can't recover hunger - return NONE to try next priority
+        return ActionDecision(
+            action=ActionType.NONE,
+            reason=f"Low hunger ({stats.hunger:.1f}) but no way to recover",
+            should_record_onchain=False,
+            stats_snapshot=stats.to_dict(),
+        )
+
+    def _try_happiness_recovery(
+        self, context: PetContext, should_record: bool
+    ) -> ActionDecision:
+        """Attempt to recover happiness."""
+        stats = context.stats
+
+        # Prefer throwball (earns tokens)
+        can_throwball, reason = ActionConditions.can_throwball(stats)
+        if can_throwball:
+            return ActionDecision(
+                action=ActionType.THROWBALL,
+                reason=f"Low happiness ({stats.happiness:.1f}) - throwing ball",
+                should_record_onchain=should_record,
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Fallback to rub
+        can_rub, reason = ActionConditions.can_rub(stats)
+        if can_rub:
+            return ActionDecision(
+                action=ActionType.RUB,
+                reason=f"Low happiness ({stats.happiness:.1f}) - rubbing pet",
+                should_record_onchain=should_record,
+                fallback_from=ActionType.THROWBALL,
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Can't improve happiness directly
+        return ActionDecision(
+            action=ActionType.NONE,
+            reason=f"Low happiness ({stats.happiness:.1f}) but no action available",
+            should_record_onchain=False,
+            stats_snapshot=stats.to_dict(),
+        )
+
+    def _do_maintenance_action(
+        self, context: PetContext, should_record: bool
+    ) -> ActionDecision:
+        """Perform maintenance action when all stats are acceptable."""
+        stats = context.stats
+
+        # Prefer throwball (earns tokens and we need actions)
+        can_throwball, reason = ActionConditions.can_throwball(stats)
+        if can_throwball:
+            return ActionDecision(
+                action=ActionType.THROWBALL,
+                reason=f"Maintenance: throwing ball to earn tokens ({reason})",
+                should_record_onchain=should_record,
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Try shower
+        can_shower, reason = ActionConditions.can_shower(stats)
+        if can_shower:
+            return ActionDecision(
+                action=ActionType.SHOWER,
+                reason=f"Maintenance: showering ({reason})",
+                should_record_onchain=should_record,
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Try rub
+        can_rub, reason = ActionConditions.can_rub(stats)
+        if can_rub:
+            return ActionDecision(
+                action=ActionType.RUB,
+                reason=f"Maintenance: rubbing ({reason})",
+                should_record_onchain=should_record,
+                stats_snapshot=stats.to_dict(),
+            )
+
+        # Ultimate fallback: sleep (always possible)
+        return ActionDecision(
+            action=ActionType.SLEEP,
+            reason="Maintenance: all stats full, sleeping to maintain",
+            should_record_onchain=should_record,
+            fallback_from=ActionType.THROWBALL,
+            stats_snapshot=stats.to_dict(),
+        )
+
+    def _log_context(self, context: PetContext) -> None:
+        """Log the current context for debugging."""
+        stats = context.stats
+        self.logger.info(
+            "📊 Decision context: "
+            "hunger=%.1f%%, health=%.1f%%, energy=%.1f%%, "
+            "happiness=%.1f%%, hygiene=%.1f%% | "
+            "sleeping=%s, tokens=%.2f, consumables=%d, "
+            "onchain_actions=%d/%d",
+            stats.hunger,
+            stats.health,
+            stats.energy,
+            stats.happiness,
+            stats.hygiene,
+            context.is_sleeping,
+            context.token_balance,
+            len(context.owned_consumables),
+            context.actions_recorded_this_epoch,
+            context.required_actions_per_epoch,
+        )
+
+    def _record_decision(self, decision: ActionDecision) -> None:
+        """Record decision in history and log it."""
+        self._last_decision = decision
+        self._decision_history.append(decision)
+
+        # Keep only last 50 decisions
+        if len(self._decision_history) > 50:
+            self._decision_history = self._decision_history[-50:]
+
+        self.logger.info("✅ Decision: %s", decision)
+
+    def get_decision_history(self) -> List[ActionDecision]:
+        """Get the history of decisions made."""
+        return list(self._decision_history)
+
+    def get_last_decision(self) -> Optional[ActionDecision]:
+        """Get the most recent decision."""
+        return self._last_decision
+
+
+class ActionExecutor(Protocol):
+    """Protocol for executing pet actions."""
+
+    async def execute_sleep(
+        self, record_on_chain: bool, wake_first: bool = False
+    ) -> bool: ...
+
+    async def execute_shower(self, record_on_chain: bool) -> bool: ...
+
+    async def execute_rub(self, record_on_chain: bool) -> bool: ...
+
+    async def execute_throwball(self, record_on_chain: bool) -> bool: ...
+
+    async def execute_use_consumable(
+        self, consumable_id: str, record_on_chain: bool
+    ) -> bool: ...
+
+    async def execute_buy_consumable(
+        self, consumable_id: str, amount: int, record_on_chain: bool
+    ) -> bool: ...
+
+
+async def execute_decision(
+    decision: ActionDecision,
+    executor: ActionExecutor,
+    logger: Optional[logging.Logger] = None,
+) -> bool:
+    """
+    Execute a decision using the provided executor.
+
+    Args:
+        decision: The ActionDecision to execute
+        executor: Implementation of ActionExecutor protocol
+        logger: Optional logger
+
+    Returns:
+        True if action was executed successfully
+    """
+    log = logger or logging.getLogger(__name__)
+
+    if decision.action == ActionType.NONE:
+        log.info("No action to execute")
+        return False
+
+    if decision.action == ActionType.SLEEP:
+        wake_first = decision.params.get("wake_first", False)
+        return await executor.execute_sleep(
+            decision.should_record_onchain,
+            wake_first=wake_first,
+        )
+
+    if decision.action == ActionType.SHOWER:
+        return await executor.execute_shower(decision.should_record_onchain)
+
+    if decision.action == ActionType.RUB:
+        return await executor.execute_rub(decision.should_record_onchain)
+
+    if decision.action == ActionType.THROWBALL:
+        return await executor.execute_throwball(decision.should_record_onchain)
+
+    if decision.action == ActionType.CONSUMABLES_USE:
+        consumable_id = decision.params.get("consumable_id", "")
+        return await executor.execute_use_consumable(
+            consumable_id,
+            decision.should_record_onchain,
+        )
+
+    if decision.action == ActionType.CONSUMABLES_BUY:
+        consumable_id = decision.params.get("consumable_id", "")
+        amount = decision.params.get("amount", 1)
+        return await executor.execute_buy_consumable(
+            consumable_id,
+            amount,
+            decision.should_record_onchain,
+        )
+
+    log.warning("Unknown action type: %s", decision.action)
+    return False
+
+
+# ==============================================================================
+# Convenience Functions
+# ==============================================================================
+
+
+def feed_best_owned_food(owned_consumables: List[str]) -> Optional[str]:
+    """
+    Get the best food to feed from owned consumables.
+
+    This is a convenience wrapper around ConsumableSelector.get_best_food().
+
+    Args:
+        owned_consumables: List of consumable IDs owned by the pet.
+
+    Returns:
+        The best food consumable ID to use, or None if no food owned.
+
+    Example:
+        >>> food = feed_best_owned_food(["COOKIE", "BURGER", "SMALL_POTION"])
+        >>> print(food)  # "BURGER" (higher priority than COOKIE)
+    """
+    return ConsumableSelector.get_best_food(owned_consumables)
+
+
+def get_best_health_item(owned_consumables: List[str]) -> Optional[str]:
+    """
+    Get the best health item from owned consumables.
+
+    This is a convenience wrapper around ConsumableSelector.get_best_health_item().
+
+    Args:
+        owned_consumables: List of consumable IDs owned by the pet.
+
+    Returns:
+        The best health consumable ID to use, or None if no health items owned.
+
+    Example:
+        >>> health = get_best_health_item(["SMALL_POTION", "LARGE_POTION"])
+        >>> print(health)  # "LARGE_POTION" (higher priority)
+    """
+    return ConsumableSelector.get_best_health_item(owned_consumables)
+
+
+def get_best_consumable(owned_consumables: List[str]) -> Optional[str]:
+    """
+    Get the best consumable to use (prefers food over health items).
+
+    Args:
+        owned_consumables: List of consumable IDs owned by the pet.
+
+    Returns:
+        The best consumable ID to use, or None if nothing owned.
+    """
+    return ConsumableSelector.get_any_consumable(owned_consumables)

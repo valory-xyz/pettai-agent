@@ -1,677 +1,306 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useLoginWithEmail, usePrivy } from '@privy-io/react-auth';
-import { getOriginAliases } from '../utils/originAliases';
 
-const STATUS = {
-  INITIALIZING: 'initializing',
-  PROMPTING: 'prompting',
-  SENDING_CODE: 'sending-code',
-  AWAITING_CODE: 'awaiting-code',
-  VERIFYING_CODE: 'verifying-code',
-  SENDING: 'sending',
-  ERROR: 'error',
-  COMPLETED: 'completed',
-  NO_OPENER: 'no-opener',
-};
-
-const PrivyLoginPopupContent = () => {
+const PrivyLoginPopup = () => {
   const { ready, authenticated, getAccessToken, logout } = usePrivy();
   const { sendCode, loginWithCode } = useLoginWithEmail();
-  const [status, setStatus] = useState(STATUS.INITIALIZING);
-  const [errorMessage, setErrorMessage] = useState(null);
+
+  const [status, setStatus] = useState('init'); // init, ready, sending-code, awaiting-code, verifying, sending-token, done, error
   const [email, setEmail] = useState('');
-  const [emailWithCode, setEmailWithCode] = useState(null);
   const [code, setCode] = useState('');
-  const [isClearingSession, setIsClearingSession] = useState(false);
-  const [hasForcedLogout, setHasForcedLogout] = useState(false);
+  const [error, setError] = useState(null);
+  const [hasCleared, setHasCleared] = useState(false);
+  const hasSentToken = useRef(false);
 
-  const forceLogout = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      const params = new URLSearchParams(window.location.search);
-      const raw = params.get('forceLogout');
-      if (raw === null) return false;
-      const normalized = raw.toString().toLowerCase();
-      return raw === '' || normalized === '1' || normalized === 'true';
-    } catch (error) {
-      console.warn('[PrivyLoginPopup] Unable to parse query params for forceLogout', error);
-      return false;
-    }
-  }, []);
-
-  const openerOrigins = useMemo(() => {
-    if (typeof window === 'undefined') {
-      return [];
-    }
-    const candidateOrigins = new Set();
-    if (typeof document !== 'undefined' && document.referrer) {
-      try {
-        const refOrigin = new URL(document.referrer).origin;
-        if (refOrigin) {
-          candidateOrigins.add(refOrigin);
-        }
-      } catch (error) {
-        console.warn('[PrivyLoginPopup] Unable to parse referrer origin', error);
-      }
-    }
-    if (window.opener && !window.opener.closed) {
-      try {
-        if (window.opener.location?.origin) {
-          candidateOrigins.add(window.opener.location.origin);
-        }
-      } catch (_error) {
-        // Access to opener location can throw for cross-origin windows.
-      }
-    }
-    candidateOrigins.add(window.location.origin);
-
-    const aliasSet = new Set();
-    candidateOrigins.forEach(origin => {
-      if (!origin) return;
-      getOriginAliases(origin).forEach(alias => aliasSet.add(alias));
-    });
-
-    return Array.from(aliasSet);
-  }, []);
-
-  const statusCopy = useMemo(
-    () => ({
-      [STATUS.INITIALIZING]: 'Preparing secure login…',
-      [STATUS.PROMPTING]: 'Enter your email to receive a secure login code.',
-      [STATUS.SENDING_CODE]: 'Sending a secure login code…',
-      [STATUS.AWAITING_CODE]: 'Enter the code from your email to continue.',
-      [STATUS.VERIFYING_CODE]: 'Verifying your code…',
-      [STATUS.SENDING]: 'Securing your session…',
-      [STATUS.ERROR]:
-        errorMessage || 'Something went wrong. Close this window and retry.',
-      [STATUS.NO_OPENER]:
-        errorMessage ||
-        'Could not detect the Pett Agent dashboard. Close this window and retry.',
-      [STATUS.COMPLETED]: 'Login successful. You can close this tab.',
-    }),
-    [errorMessage]
-  );
-
-  // FIXED: Multi-channel message sending that works in Electron iframe
-  const sendMessageToOpener = useCallback(
-    payload => {
-      if (typeof window === 'undefined') {
-        return false;
-      }
-
-      const timestampedPayload = { ...payload, sentAt: Date.now() };
-      let delivered = false;
-
-      // Log origin for debugging
-      console.log('[PrivyLoginPopup] Current origin:', window.location.origin);
-      console.log('[PrivyLoginPopup] Sending message type:', payload.type);
-
-      // METHOD 1: BroadcastChannel (MOST RELIABLE for Electron iframe)
-      // This works even when window.opener is null, as long as same origin
-      if (typeof BroadcastChannel !== 'undefined') {
-        try {
-          const channel = new BroadcastChannel('pett-auth-channel');
-          channel.postMessage(timestampedPayload);
-          // Don't close immediately - give it time to send
-          setTimeout(() => {
-            try { channel.close(); } catch (e) { }
-          }, 100);
-          delivered = true;
-          console.log('[PrivyLoginPopup] ✓ Sent via BroadcastChannel');
-        } catch (error) {
-          console.warn('[PrivyLoginPopup] BroadcastChannel failed:', error);
-        }
-      } else {
-        console.warn('[PrivyLoginPopup] ⚠ BroadcastChannel not available');
-      }
-
-      // METHOD 2: localStorage event (backup for same-origin)
-      try {
-        const storageKey = 'pett-auth-message';
-        localStorage.setItem(storageKey, JSON.stringify({
-          ...timestampedPayload,
-          _storageTimestamp: Date.now(), // Force change detection
-        }));
-        // Clean up after a short delay
-        setTimeout(() => {
-          try {
-            localStorage.removeItem(storageKey);
-          } catch (e) {
-            // Ignore cleanup errors
-          }
-        }, 2000);
-        delivered = true;
-        console.log('[PrivyLoginPopup] ✓ Sent via localStorage');
-      } catch (error) {
-        console.warn('[PrivyLoginPopup] localStorage failed:', error);
-      }
-
-      // METHOD 3: Try window.opener (standard popup case - may not work in Electron)
-      if (window.opener && !window.opener.closed) {
-        openerOrigins.forEach(origin => {
-          try {
-            window.opener.postMessage(timestampedPayload, origin);
-            delivered = true;
-            console.log('[PrivyLoginPopup] ✓ Sent via opener to:', origin);
-          } catch (error) {
-            console.warn(`[PrivyLoginPopup] opener.postMessage failed for ${origin}:`, error);
-          }
-        });
-      }
-
-      // METHOD 4: Try window.parent (iframe case)
-      if (window.parent && window.parent !== window) {
-        openerOrigins.forEach(origin => {
-          try {
-            window.parent.postMessage(timestampedPayload, origin);
-            delivered = true;
-            console.log('[PrivyLoginPopup] ✓ Sent via parent to:', origin);
-          } catch (error) {
-            console.warn(`[PrivyLoginPopup] parent.postMessage failed for ${origin}:`, error);
-          }
-        });
-        // Also try wildcard for cross-origin iframes
-        try {
-          window.parent.postMessage(timestampedPayload, '*');
-          delivered = true;
-        } catch (error) {
-          // Ignore
-        }
-      }
-
-      console.log('[PrivyLoginPopup] Message delivery result:', delivered ? 'SUCCESS' : 'FAILED');
-      return delivered;
-    },
-    [openerOrigins]
-  );
-
-  const handlePrivyError = useCallback(
-    (fallbackMessage, error) => {
-      const details =
-        error?.message ||
-        error?.response?.message ||
-        fallbackMessage ||
-        'Unable to complete Privy login.';
-      console.error('[PrivyLoginPopup] Privy error:', error || fallbackMessage);
-      setErrorMessage(details);
-      setStatus(STATUS.ERROR);
-      sendMessageToOpener({
-        type: 'privy-popup-error',
-        message: details,
-        error: {
-          message: details,
-          code: error?.code || error?.status,
-          status: error?.status,
-          stack: error?.stack,
-        },
-      });
-    },
-    [sendMessageToOpener]
-  );
-
+  // Clear any existing Privy session on mount
   useEffect(() => {
-    return () => {
-      sendMessageToOpener({
-        type: 'privy-popup-closed',
-        message: 'Login window closed.',
-      });
-    };
-  }, [sendMessageToOpener]);
+    if (!ready || hasCleared) return;
 
-  const normalizedEmail = useMemo(() => email.trim().toLowerCase(), [email]);
-  const hasCodeForCurrentEmail =
-    normalizedEmail.length > 0 && emailWithCode === normalizedEmail;
-
-  useEffect(() => {
-    if (!hasCodeForCurrentEmail && status === STATUS.AWAITING_CODE) {
-      setStatus(STATUS.PROMPTING);
-      setCode('');
-    }
-  }, [hasCodeForCurrentEmail, status]);
-
-  useEffect(() => {
-    if (ready && !authenticated && status === STATUS.INITIALIZING) {
-      setStatus(STATUS.PROMPTING);
-    }
-  }, [ready, authenticated, status]);
-
-  useEffect(() => {
-    if (!ready || !forceLogout || hasForcedLogout) return;
-    const clearPrivySession = async () => {
-      setIsClearingSession(true);
+    console.log('[Popup] Clearing Privy session...');
+    const clear = async () => {
       try {
         await logout();
-      } catch (error) {
-        console.warn('[PrivyLoginPopup] Failed to clear Privy session before login', error);
-      } finally {
-        setHasForcedLogout(true);
-        setIsClearingSession(false);
-        setStatus(STATUS.PROMPTING);
-        setErrorMessage(null);
+      } catch (e) {
+        console.log('[Popup] Logout error (ok):', e);
+      }
+      console.log('[Popup] Session cleared, ready for login');
+      setHasCleared(true);
+      setStatus('ready');
+    };
+    clear();
+  }, [ready, hasCleared, logout]);
+
+  // Send token to parent when authenticated
+  useEffect(() => {
+    if (!ready || !authenticated || !hasCleared || hasSentToken.current) return;
+
+    console.log('[Popup] Authenticated! Getting access token...');
+    const send = async () => {
+      setStatus('sending-token');
+      hasSentToken.current = true;
+
+      try {
+        const token = await getAccessToken();
+        if (!token) throw new Error('No token received');
+
+        console.log('[Popup] Got token, sending to parent via BroadcastChannel...');
+
+        // Send via BroadcastChannel - keep it open longer to ensure delivery
+        const channel = new BroadcastChannel('pett-auth');
+        channel.postMessage({ type: 'token', token });
+        console.log('[Popup] Token sent via BroadcastChannel!');
+
+        // Also try postMessage as backup (if opener still exists)
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.postMessage({ type: 'token', token }, window.location.origin);
+            console.log('[Popup] Token also sent via postMessage');
+          }
+        } catch (e) {
+          console.log('[Popup] postMessage failed (expected in Electron):', e);
+        }
+
+        // Keep channel open longer to ensure delivery
+        setTimeout(() => {
+          channel.close();
+          console.log('[Popup] Channel closed');
+        }, 2000);
+
+        setStatus('done');
+
+        // Close popup after a delay
+        setTimeout(() => {
+          console.log('[Popup] Closing popup window...');
+          window.close();
+        }, 1000);
+      } catch (e) {
+        console.error('[Popup] Error getting/sending token:', e);
+        setError(e?.message || 'Failed to get token');
+        setStatus('error');
+        hasSentToken.current = false;
       }
     };
-    clearPrivySession();
-  }, [forceLogout, hasForcedLogout, logout, ready]);
+    send();
+  }, [ready, authenticated, hasCleared, getAccessToken]);
 
   const handleSendCode = useCallback(async () => {
-    if (!normalizedEmail) {
-      setErrorMessage('Enter a valid email address.');
+    const trimmed = email.trim().toLowerCase();
+    if (!trimmed) {
+      setError('Enter your email');
       return;
     }
+
+    setError(null);
+    setStatus('sending-code');
+    console.log('[Popup] Sending code to:', trimmed);
+
     try {
-      setErrorMessage(null);
-      setStatus(STATUS.SENDING_CODE);
-      await sendCode({ email: normalizedEmail });
-      setEmailWithCode(normalizedEmail);
+      await sendCode({ email: trimmed });
       setCode('');
-      setStatus(STATUS.AWAITING_CODE);
-    } catch (error) {
-      console.error('[PrivyLoginPopup] Failed to send code:', error);
-      setErrorMessage(
-        error?.message || 'Unable to send login code. Please try again.'
-      );
-      setStatus(STATUS.PROMPTING);
+      setStatus('awaiting-code');
+      console.log('[Popup] Code sent successfully');
+    } catch (e) {
+      console.error('[Popup] Failed to send code:', e);
+      setError(e?.message || 'Failed to send code');
+      setStatus('ready');
     }
-  }, [normalizedEmail, sendCode]);
+  }, [email, sendCode]);
 
   const handleVerifyCode = useCallback(async () => {
-    if (!code.trim()) {
-      setErrorMessage('Enter the code from your email.');
+    const trimmed = code.trim();
+    if (!trimmed) {
+      setError('Enter the code');
       return;
     }
+
+    setError(null);
+    setStatus('verifying');
+    console.log('[Popup] Verifying code...');
+
     try {
-      setErrorMessage(null);
-      setStatus(STATUS.VERIFYING_CODE);
-      await loginWithCode({ code: code.trim() });
-    } catch (error) {
-      console.error('[PrivyLoginPopup] Failed to verify code:', error);
-      setErrorMessage(
-        error?.message ||
-        'The code was invalid. Request a new code and try again.'
-      );
-      setStatus(STATUS.AWAITING_CODE);
+      await loginWithCode({ code: trimmed });
+      console.log('[Popup] Code verified! Waiting for authenticated state...');
+      // useEffect will handle the token sending when authenticated becomes true
+    } catch (e) {
+      console.error('[Popup] Code verification failed:', e);
+      setError(e?.message || 'Invalid code');
+      setStatus('awaiting-code');
     }
   }, [code, loginWithCode]);
 
-  useEffect(() => {
-    const sendToken = async () => {
-      try {
-        setStatus(STATUS.SENDING);
-        const token = await getAccessToken();
-        if (!token) {
-          throw new Error('Missing Privy token');
-        }
-
-        console.log('[PrivyLoginPopup] Token obtained, sending to parent...');
-
-        const delivered = sendMessageToOpener({
-          type: 'privy-token',
-          token,
-        });
-
-        // CHANGED: In Electron context, BroadcastChannel/localStorage should work
-        // Don't show error if we sent via those channels
-        if (!delivered) {
-          console.warn('[PrivyLoginPopup] Could not deliver token via any channel');
-          setStatus(STATUS.NO_OPENER);
-          setErrorMessage(
-            'Unable to connect to the Pett Agent dashboard. Please close this window and try again from the dashboard.'
-          );
-          return;
-        }
-
-        setStatus(STATUS.COMPLETED);
-        sendMessageToOpener({
-          type: 'privy-popup-status',
-          status: STATUS.COMPLETED,
-          message: statusCopy[STATUS.COMPLETED],
-        });
-
-        // Try to close, but don't worry if it fails
-        // The parent should handle the token regardless
-        setTimeout(() => {
-          try {
-            window.close();
-          } catch (e) {
-            console.log('[PrivyLoginPopup] Could not auto-close window');
-          }
-        }, 500);
-      } catch (error) {
-        handlePrivyError(
-          'Unable to retrieve Privy token. Please try again.',
-          error
-        );
-        await logout().catch(() => null);
-      }
-    };
-
-    const shouldWaitForLogout =
-      forceLogout && (isClearingSession || !hasForcedLogout);
-    if (ready && authenticated && !shouldWaitForLogout) {
-      sendToken();
-    }
-  }, [authenticated, forceLogout, getAccessToken, handlePrivyError, hasForcedLogout, isClearingSession, logout, ready, sendMessageToOpener, statusCopy]);
-
-  const statusDescription = statusCopy[status];
-
-  useEffect(() => {
-    sendMessageToOpener({
-      type: 'privy-popup-status',
-      status,
-      message: statusDescription,
-      error:
-        status === STATUS.ERROR
-          ? {
-            message: errorMessage || statusDescription,
-          }
-          : undefined,
-    });
-  }, [status, statusDescription, errorMessage, sendMessageToOpener]);
-
   const handleClose = useCallback(() => {
-    sendMessageToOpener({
-      type: 'privy-popup-closed',
-      message: 'Login window closed by user.',
-    });
-    window.close();
-  }, [sendMessageToOpener]);
+    console.log('[Popup] User closed popup');
+    const channel = new BroadcastChannel('pett-auth');
+    channel.postMessage({ type: 'closed' });
+    setTimeout(() => {
+      channel.close();
+      window.close();
+    }, 100);
+  }, []);
 
-  const showForm =
-    status === STATUS.PROMPTING ||
-    status === STATUS.SENDING_CODE ||
-    status === STATUS.AWAITING_CODE ||
-    status === STATUS.VERIFYING_CODE;
-  const isSendingCode = status === STATUS.SENDING_CODE;
-  const isVerifyingCode = status === STATUS.VERIFYING_CODE;
-  const codeStepActive =
-    hasCodeForCurrentEmail &&
-    (status === STATUS.AWAITING_CODE || status === STATUS.VERIFYING_CODE);
-  const disableInputs =
-    status === STATUS.SENDING ||
-    status === STATUS.COMPLETED ||
-    status === STATUS.ERROR ||
-    status === STATUS.NO_OPENER;
-  const canSendCode =
-    normalizedEmail.length > 0 && !isSendingCode && !isVerifyingCode && !disableInputs;
-  const canVerifyCode =
-    codeStepActive && code.trim().length > 0 && !isVerifyingCode && !disableInputs;
-  const sendButtonLabel = hasCodeForCurrentEmail ? 'Resend code' : 'Send code';
-  const showInlineError =
-    !!errorMessage && status !== STATUS.ERROR && status !== STATUS.NO_OPENER;
-  const codeTargetEmail = hasCodeForCurrentEmail ? normalizedEmail : emailWithCode;
+  const statusText = useMemo(() => {
+    switch (status) {
+      case 'init':
+        return 'Preparing...';
+      case 'ready':
+        return 'Enter your email';
+      case 'sending-code':
+        return 'Sending code...';
+      case 'awaiting-code':
+        return 'Enter the code from your email';
+      case 'verifying':
+        return 'Verifying...';
+      case 'sending-token':
+        return 'Connecting...';
+      case 'done':
+        return 'Done! This window will close automatically.';
+      case 'error':
+        return error || 'Something went wrong';
+      default:
+        return '';
+    }
+  }, [status, error]);
 
-  const handleUseDifferentEmail = useCallback(() => {
-    if (disableInputs) return;
-    setEmail('');
-    setEmailWithCode(null);
-    setCode('');
-    setStatus(STATUS.PROMPTING);
-    setErrorMessage(null);
-  }, [disableInputs]);
+  const showForm = ['ready', 'sending-code', 'awaiting-code', 'verifying'].includes(status);
+  const showCodeInput = ['awaiting-code', 'verifying'].includes(status);
+  const isLoading = ['init', 'sending-code', 'verifying', 'sending-token'].includes(status);
 
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '1rem',
-        background: '#0b0f26',
-        color: '#f1f5ff',
-        textAlign: 'center',
-        padding: '2rem',
-        position: 'relative',
-      }}
-    >
-      <button
-        type="button"
-        onClick={handleClose}
-        aria-label="Close"
-        style={{
-          position: 'absolute',
-          top: '1.25rem',
-          right: '1.25rem',
-          width: '2.25rem',
-          height: '2.25rem',
-          borderRadius: '999px',
-          border: '1px solid rgba(255,255,255,0.3)',
-          background: 'rgba(11,15,38,0.65)',
-          color: '#f1f5ff',
-          cursor: 'pointer',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: 0,
-        }}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
-          <path fill="currentColor" d="M12 2c5.53 0 10 4.47 10 10s-4.47 10-10 10S2 17.53 2 12S6.47 2 12 2m3.59 5L12 10.59L8.41 7L7 8.41L10.59 12L7 15.59L8.41 17L12 13.41L15.59 17L17 15.59L13.41 12L17 8.41z" />
-        </svg>
+    <div style={styles.container}>
+      <button onClick={handleClose} style={styles.closeBtn} aria-label="Close">
+        ✕
       </button>
-      <div>
-        <h1 style={{ fontSize: '1.5rem', marginBottom: '0.5rem' }}>
-          Pett Agent Login
-        </h1>
-        <p style={{ color: 'rgba(255,255,255,0.7)' }}>{statusDescription}</p>
-      </div>
+
+      <h1 style={styles.title}>Pett Agent Login</h1>
+      <p style={styles.status}>{statusText}</p>
+
       {showForm && (
-        <div
-          style={{
-            width: '100%',
-            maxWidth: '24rem',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.75rem',
-            textAlign: 'left',
-          }}
-        >
-          <label
-            htmlFor="privy-email"
-            style={{ fontSize: '0.85rem', fontWeight: 600, color: '#9fb9ff' }}
-          >
-            Email address
-          </label>
+        <div style={styles.form}>
           <input
-            id="privy-email"
             type="email"
-            value={email}
-            autoComplete="email"
             placeholder="you@example.com"
-            disabled={isSendingCode || isVerifyingCode || disableInputs}
-            onChange={event => {
-              setEmail(event.target.value);
-              if (showInlineError) {
-                setErrorMessage(null);
-              }
-            }}
-            onKeyDown={event => {
-              if (event.key === 'Enter' && canSendCode) {
-                event.preventDefault();
-                handleSendCode();
-              }
-            }}
-            style={{
-              width: '100%',
-              padding: '0.75rem 1rem',
-              borderRadius: '0.75rem',
-              border: '1px solid rgba(255,255,255,0.18)',
-              background: 'rgba(15,20,48,0.85)',
-              color: '#f8fbff',
-              fontSize: '0.95rem',
-              outline: 'none',
-            }}
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && !showCodeInput && handleSendCode()}
+            disabled={isLoading}
+            style={styles.input}
           />
           <button
-            type="button"
             onClick={handleSendCode}
-            disabled={!canSendCode}
+            disabled={isLoading || !email.trim()}
             style={{
-              padding: '0.75rem 1rem',
-              borderRadius: '999px',
-              border: 'none',
-              background: canSendCode ? '#4A90E2' : 'rgba(255,255,255,0.12)',
-              color: canSendCode ? '#fff' : 'rgba(255,255,255,0.5)',
-              fontWeight: 600,
-              cursor: canSendCode ? 'pointer' : 'not-allowed',
-              transition: 'background 0.2s ease',
+              ...styles.button,
+              opacity: isLoading || !email.trim() ? 0.5 : 1,
             }}
           >
-            {isSendingCode ? 'Sending code…' : sendButtonLabel}
+            {status === 'sending-code' ? 'Sending...' : showCodeInput ? 'Resend code' : 'Send code'}
           </button>
-          {codeStepActive && (
+
+          {showCodeInput && (
             <>
-              <label
-                htmlFor="privy-code"
-                style={{ fontSize: '0.85rem', fontWeight: 600, color: '#9fb9ff', marginTop: '0.5rem' }}
-              >
-                Verification code
-              </label>
               <input
-                id="privy-code"
                 type="text"
-                inputMode="numeric"
-                autoComplete="one-time-code"
+                placeholder="Enter code"
                 value={code}
-                placeholder="XXXXXX"
-                disabled={isVerifyingCode || disableInputs}
-                onChange={event => {
-                  setCode(event.target.value);
-                  if (showInlineError) {
-                    setErrorMessage(null);
-                  }
-                }}
-                onKeyDown={event => {
-                  if (event.key === 'Enter' && canVerifyCode) {
-                    event.preventDefault();
-                    handleVerifyCode();
-                  }
-                }}
-                style={{
-                  width: '100%',
-                  padding: '0.75rem 1rem',
-                  borderRadius: '0.75rem',
-                  border: '1px solid rgba(255,255,255,0.18)',
-                  background: 'rgba(15,20,48,0.85)',
-                  color: '#f8fbff',
-                  fontSize: '1.05rem',
-                  letterSpacing: '0.2rem',
-                  textAlign: 'center',
-                  outline: 'none',
-                }}
+                onChange={(e) => setCode(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleVerifyCode()}
+                disabled={status === 'verifying'}
+                style={{ ...styles.input, textAlign: 'center', letterSpacing: '0.2em' }}
               />
               <button
-                type="button"
                 onClick={handleVerifyCode}
-                disabled={!canVerifyCode}
+                disabled={status === 'verifying' || !code.trim()}
                 style={{
-                  padding: '0.75rem 1rem',
-                  borderRadius: '999px',
-                  border: 'none',
-                  background: canVerifyCode ? '#58f0a7' : 'rgba(255,255,255,0.12)',
-                  color: canVerifyCode ? '#081027' : 'rgba(255,255,255,0.6)',
-                  fontWeight: 700,
-                  cursor: canVerifyCode ? 'pointer' : 'not-allowed',
-                  transition: 'background 0.2s ease',
+                  ...styles.button,
+                  background: '#58f0a7',
+                  color: '#081027',
+                  opacity: status === 'verifying' || !code.trim() ? 0.5 : 1,
                 }}
               >
-                {isVerifyingCode ? 'Verifying…' : 'Connect to Pett'}
+                {status === 'verifying' ? 'Verifying...' : 'Connect'}
               </button>
-              {codeTargetEmail && (
-                <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.7)' }}>
-                  A code was sent to <strong>{codeTargetEmail}</strong>. Enter it above to continue.
-                </p>
-              )}
-              {!isVerifyingCode && !disableInputs && (
-                <button
-                  type="button"
-                  onClick={handleUseDifferentEmail}
-                  style={{
-                    alignSelf: 'flex-start',
-                    background: 'transparent',
-                    border: 'none',
-                    color: '#9fb9ff',
-                    cursor: 'pointer',
-                    fontSize: '0.85rem',
-                    textDecoration: 'underline',
-                    padding: 0,
-                  }}
-                >
-                  Use a different email
-                </button>
-              )}
             </>
           )}
-          {showInlineError && (
-            <p style={{ color: '#feb2b2', fontSize: '0.85rem' }}>{errorMessage}</p>
-          )}
+
+          {error && <p style={styles.error}>{error}</p>}
         </div>
       )}
-      {(status === STATUS.ERROR || status === STATUS.NO_OPENER) && (
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '0.75rem',
-            alignItems: 'center',
-            width: '100%',
-            maxWidth: '24rem',
-          }}
-        >
-          <button
-            style={{
-              padding: '0.6rem 1.25rem',
-              borderRadius: '999px',
-              border: 'none',
-              background: '#4A90E2',
-              color: '#fff',
-              fontWeight: '600',
-              cursor: 'pointer',
-              width: '100%',
-            }}
-            onClick={() => {
-              window.location.reload();
-            }}
-          >
-            Retry
-          </button>
-          <button
-            style={{
-              padding: '0.6rem 1.25rem',
-              borderRadius: '999px',
-              border: '1px solid rgba(255,255,255,0.3)',
-              background: 'transparent',
-              color: '#f1f5ff',
-              fontWeight: '600',
-              cursor: 'pointer',
-              width: '100%',
-            }}
-            onClick={() => {
-              // Try to refresh the opener/parent window, then close this popup
-              try {
-                if (window.opener && !window.opener.closed) {
-                  window.opener.location.reload();
-                } else if (window.parent && window.parent !== window) {
-                  window.parent.location.reload();
-                }
-              } catch (error) {
-                console.warn('[PrivyLoginPopup] Could not refresh parent window:', error);
-              }
-              // Close this popup window
-              window.close();
-            }}
-          >
-            Close & Refresh Dashboard
-          </button>
-        </div>
+
+      {status === 'error' && (
+        <button onClick={() => window.location.reload()} style={styles.button}>
+          Retry
+        </button>
       )}
     </div>
   );
 };
 
-const PrivyLoginPopup = () => {
-  return <PrivyLoginPopupContent />;
+const styles = {
+  container: {
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: '1rem',
+    background: '#0b0f26',
+    color: '#f1f5ff',
+    padding: '2rem',
+    textAlign: 'center',
+    position: 'relative',
+  },
+  closeBtn: {
+    position: 'absolute',
+    top: '1rem',
+    right: '1rem',
+    width: '2rem',
+    height: '2rem',
+    borderRadius: '50%',
+    border: '1px solid rgba(255,255,255,0.3)',
+    background: 'transparent',
+    color: '#fff',
+    cursor: 'pointer',
+    fontSize: '1rem',
+  },
+  title: {
+    fontSize: '1.5rem',
+    margin: 0,
+  },
+  status: {
+    color: 'rgba(255,255,255,0.7)',
+    margin: 0,
+  },
+  form: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '0.75rem',
+    width: '100%',
+    maxWidth: '20rem',
+  },
+  input: {
+    padding: '0.75rem 1rem',
+    borderRadius: '0.5rem',
+    border: '1px solid rgba(255,255,255,0.2)',
+    background: 'rgba(255,255,255,0.1)',
+    color: '#fff',
+    fontSize: '1rem',
+    outline: 'none',
+  },
+  button: {
+    padding: '0.75rem 1rem',
+    borderRadius: '2rem',
+    border: 'none',
+    background: '#4A90E2',
+    color: '#fff',
+    fontSize: '1rem',
+    fontWeight: 600,
+    cursor: 'pointer',
+  },
+  error: {
+    color: '#ff8080',
+    fontSize: '0.875rem',
+    margin: 0,
+  },
 };
 
 export default PrivyLoginPopup;

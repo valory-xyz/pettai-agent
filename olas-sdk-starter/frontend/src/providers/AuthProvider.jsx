@@ -1,16 +1,5 @@
 /**
- * AuthProvider - Example implementation that works in Electron iframe contexts
- * 
- * This provider handles authentication using Privy in a way that works when:
- * 1. Running in a standard browser
- * 2. Running inside an Electron application
- * 3. Running inside an iframe within Electron
- * 
- * Key Changes for Electron Iframe Support:
- * - Uses BroadcastChannel as primary communication method
- * - Falls back to localStorage events for same-origin messaging
- * - Handles window.opener being null after logout
- * - Properly tracks popup state even when reference is lost
+ * AuthProvider - Simple popup-based authentication
  */
 
 import React, {
@@ -22,345 +11,214 @@ import React, {
 	useState,
 	useRef,
 } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
-import { useAuthMessageListener } from '../hooks/useAuthMessageListener';
 
-// Create the context
 const AuthContext = createContext(null);
 
-// Detect environment
-const isElectron = () => {
-	if (typeof window === 'undefined') return false;
-	return !!(
-		window.process?.versions?.electron ||
-		window.navigator?.userAgent?.includes('Electron') ||
-		window.electronAPI
-	);
-};
-
-const isInIframe = () => {
-	if (typeof window === 'undefined') return false;
-	try {
-		return window.self !== window.top;
-	} catch (e) {
-		return true;
-	}
-};
-
 export const AuthProvider = ({ children }) => {
-	const { ready, logout: privyLogout } = usePrivy();
-
-	// Local auth state
 	const [privyToken, setPrivyToken] = useState(null);
 	const [wsPet, setWsPet] = useState(null);
 	const [isLoggingIn, setIsLoggingIn] = useState(false);
 	const [loginError, setLoginError] = useState(null);
-	const [popupStatus, setPopupStatus] = useState(null);
 
-	// Popup reference
 	const popupRef = useRef(null);
+	const channelRef = useRef(null);
+	const handleTokenRef = useRef(null);
 
-	// Derived state
 	const authenticated = !!privyToken && !!wsPet;
 
-	// Authenticate with backend using Privy token
-	const authenticateWithBackend = useCallback(async (token) => {
-		if (!token) {
-			return;
-		}
-		try {
-			const response = await fetch('/api/login', {
-				method: 'POST',
-				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ privy_token: token }),
-			});
-			const data = await response.json();
-
-			if (!response.ok || data?.success !== true) {
-				console.error('[AuthProvider] Backend login failed:', data);
-				setWsPet(null);
-				setLoginError(data?.message || 'Backend login failed. Please try again.');
-				setIsLoggingIn(false);
-				setPopupStatus({
-					status: 'error',
-					message: data?.message || 'Backend login failed. Please try again.',
-					error: data,
-					timestamp: Date.now(),
-				});
-				return;
-			}
-
-			console.log('[AuthProvider] Backend login successful:', data);
-
-			setWsPet(data.name || 'Connected');
-			setPrivyToken(token);
-			setLoginError(null);
-			setIsLoggingIn(false);
-			setPopupStatus({
-				status: 'completed',
-				message: 'Authenticated successfully. Connecting to your Pett agent…',
-				timestamp: Date.now(),
-			});
-
-			// Close popup if we have a reference
+	// Restore session on mount
+	useEffect(() => {
+		let mounted = true;
+		const checkSession = async () => {
 			try {
-				if (popupRef.current && !popupRef.current.closed) {
-					popupRef.current.close();
+				const res = await fetch('/api/health');
+				if (!res.ok) return;
+				const data = await res.json();
+				const isAuth = data?.websocket?.authenticated || data?.pet?.connected;
+				if (isAuth && mounted) {
+					setWsPet(data?.pet?.name || 'Connected');
+					setPrivyToken('restored'); // Mark as having a token
 				}
 			} catch (e) {
-				// Popup may already be closed
+				// ignore
 			}
-			popupRef.current = null;
-		} catch (error) {
-			console.error('[AuthProvider] Error sending Privy token:', error?.message || error);
-			setWsPet(null);
-			setLoginError(error?.message || 'Unable to authenticate with backend.');
-			setIsLoggingIn(false);
-			setPopupStatus({
-				status: 'error',
-				message: error?.message || 'Unable to authenticate with backend.',
-				error,
-				timestamp: Date.now(),
-			});
-		}
+		};
+		checkSession();
+		return () => {
+			mounted = false;
+		};
 	}, []);
 
-	// Use the useAuthMessageListener hook to handle all message channels
-	useAuthMessageListener({
-		onToken: (token) => {
-			console.log('[AuthProvider] Token received via useAuthMessageListener');
-			authenticateWithBackend(token);
-		},
-		onError: (error) => {
-			console.error('[AuthProvider] Popup error:', error);
-			setLoginError(error?.message || 'Login failed. Please try again.');
-			setIsLoggingIn(false);
-			setPopupStatus({
-				status: 'error',
-				message: error?.message || 'Login failed. Please try again.',
-				error,
-				timestamp: Date.now(),
-			});
-		},
-		onPopupClosed: () => {
-			console.log('[AuthProvider] Popup closed');
-			setIsLoggingIn(false);
-			popupRef.current = null;
-		},
-		onStatusChange: (status, message) => {
-			console.log('[AuthProvider] Popup status:', status, message);
-			setPopupStatus({
-				status,
-				message: message || '',
-				timestamp: Date.now(),
-			});
-		},
-	});
-
-	// Restore session if available on mount
-	useEffect(() => {
-		let isMounted = true;
-
-		const restoreSessionIfAvailable = async () => {
+	// Close popup helper
+	const closePopup = useCallback(() => {
+		if (popupRef.current && !popupRef.current.closed) {
 			try {
-				const response = await fetch('/api/health');
-				if (!response.ok) {
-					throw new Error(`Health check failed with status ${response.status}`);
+				popupRef.current.close();
+			} catch (e) {
+				// ignore
+			}
+		}
+		popupRef.current = null;
+	}, []);
+
+	// Handle token from popup
+	const handleToken = useCallback(
+		async (token) => {
+			console.log('[AuthProvider] Received token from popup:', token?.substring(0, 20) + '...');
+			if (!token) return;
+
+			try {
+				const res = await fetch('/api/login', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ privy_token: token }),
+				});
+				const data = await res.json();
+				console.log('[AuthProvider] Backend response:', data);
+
+				if (res.ok && data?.success) {
+					console.log('[AuthProvider] Login successful, setting state...');
+					setPrivyToken(token);
+					setWsPet(data.name || 'Connected');
+					setLoginError(null);
+					console.log('[AuthProvider] State updated, authenticated should be true now');
+				} else if (data?.pet_connected || data?.pet?.connected) {
+					console.log('[AuthProvider] Pet already connected');
+					setPrivyToken(token);
+					setWsPet(data?.pet_name || data?.pet?.name || 'Connected');
+					setLoginError(null);
+				} else {
+					console.error('[AuthProvider] Login failed:', data?.message);
+					setLoginError(data?.message || 'Login failed');
 				}
-				const data = await response.json();
-				const isAuthenticated =
-					Boolean(data?.websocket?.authenticated) ||
-					Boolean(data?.pet?.connected) ||
-					Boolean(data?.websocket?.auth_token_present);
-
-				if (!isAuthenticated || !isMounted) return;
-
-				setWsPet(data?.pet?.name || 'Connected');
-				// Note: We don't set privyToken here since we don't have it from the health check
-				// The authenticated state will be false until we get a token
-			} catch (error) {
-				console.warn('[AuthProvider] Unable to restore existing session from backend:', error);
+			} catch (err) {
+				console.error('[AuthProvider] Login error:', err);
+				setLoginError(err?.message || 'Login failed');
 			} finally {
-				if (isMounted) {
-					// ready state is managed by Privy
+				setIsLoggingIn(false);
+				closePopup();
+			}
+		},
+		[closePopup]
+	);
+
+	// Keep handleToken ref in sync
+	useEffect(() => {
+		handleTokenRef.current = handleToken;
+	}, [handleToken]);
+
+	// Setup BroadcastChannel and postMessage listeners
+	useEffect(() => {
+		console.log('[AuthProvider] Setting up message listeners');
+
+		// Setup BroadcastChannel listener (persistent)
+		if (!channelRef.current) {
+			channelRef.current = new BroadcastChannel('pett-auth');
+
+			channelRef.current.onmessage = (event) => {
+				console.log('[AuthProvider] BroadcastChannel message received:', event.data);
+				const { type, token } = event.data || {};
+				if (type === 'token' && token && handleTokenRef.current) {
+					console.log('[AuthProvider] Calling handleToken with token from BroadcastChannel');
+					handleTokenRef.current(token);
+				} else if (type === 'closed') {
+					console.log('[AuthProvider] Popup closed message received');
+					setIsLoggingIn(false);
 				}
+			};
+		}
+
+		// Also listen for postMessage as backup
+		const handlePostMessage = (event) => {
+			// Only accept messages from same origin
+			if (event.origin !== window.location.origin) return;
+
+			console.log('[AuthProvider] postMessage received:', event.data);
+			const { type, token } = event.data || {};
+			if (type === 'token' && token && handleTokenRef.current) {
+				console.log('[AuthProvider] Calling handleToken with token from postMessage');
+				handleTokenRef.current(token);
 			}
 		};
 
-		if (ready) {
-			restoreSessionIfAvailable();
-		}
+		window.addEventListener('message', handlePostMessage);
 
 		return () => {
-			isMounted = false;
+			window.removeEventListener('message', handlePostMessage);
+			// Don't close BroadcastChannel on unmount - keep it open for the app lifecycle
+			console.log('[AuthProvider] Cleanup - keeping BroadcastChannel open');
 		};
-	}, [ready]);
-
-
-	// Cleanup popup
-	const cleanupPopup = useCallback(() => {
-		if (popupRef.current) {
-			try {
-				if (!popupRef.current.closed) {
-					popupRef.current.close();
-				}
-			} catch (error) {
-				console.warn('[AuthProvider] Unable to close popup window', error);
-			}
-			popupRef.current = null;
-		}
-		setIsLoggingIn(false);
 	}, []);
 
-	// Open the login popup
-	const openLoginPopup = useCallback((forceLogout = false) => {
-		// Clean up any existing popup before opening a new one
-		cleanupPopup();
-
-		const popupUrl = new URL('/privy-login', window.location.origin);
-		if (forceLogout) {
-			popupUrl.searchParams.set('forceLogout', '1');
-		}
-
-		// Use a unique window name each time to prevent browser from reusing existing window
-		// This ensures it opens as a popup, not a tab, and maintains window.opener reference
-		const windowName = `privy-login-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
-
-		// Popup features that force a popup window (not a tab)
-		const POPUP_FEATURES = 'width=420,height=720,resizable=yes,scrollbars=yes,menubar=no,toolbar=no,location=no,status=no';
-
-		setIsLoggingIn(true);
-		setLoginError(null);
-
-		// window.open must be called synchronously in response to user action
-		const popup = window.open(popupUrl.toString(), windowName, POPUP_FEATURES);
-
-		if (popup) {
-			popupRef.current = popup;
-			setPopupStatus({
-				status: 'opening',
-				message: 'Opening secure Privy login…',
-				timestamp: Date.now(),
-			});
-			popup.focus();
-
-			// Monitor popup closure
-			const checkClosed = setInterval(() => {
-				try {
-					if (!popupRef.current || popupRef.current.closed) {
-						clearInterval(checkClosed);
-						setIsLoggingIn(false);
-						popupRef.current = null;
-					}
-				} catch (e) {
-					// Access error can happen for cross-origin popups
-				}
-			}, 500);
-		} else {
-			const message = 'Unable to open login window. Please allow popups and try again.';
-			setPopupStatus({
-				status: 'error',
-				message,
-				timestamp: Date.now(),
-			});
-			setLoginError(message);
-			setIsLoggingIn(false);
-		}
-	}, [cleanupPopup]);
-
-	// Login function (opens popup)
 	const login = useCallback(() => {
-		openLoginPopup(false);
-	}, [openLoginPopup]);
+		console.log('[AuthProvider] Opening login popup');
+		// Reset state
+		setLoginError(null);
+		setIsLoggingIn(true);
+		closePopup();
 
-	// Logout function
+		// Open popup
+		const popup = window.open(
+			'/privy-login',
+			`privy-login-${Date.now()}`,
+			'width=420,height=720,resizable=yes,scrollbars=yes'
+		);
+
+		if (!popup) {
+			setLoginError('Popup blocked. Please allow popups.');
+			setIsLoggingIn(false);
+			return;
+		}
+
+		popupRef.current = popup;
+
+		// Check if popup was closed
+		const checkClosed = setInterval(() => {
+			if (!popupRef.current || popupRef.current.closed) {
+				clearInterval(checkClosed);
+				setIsLoggingIn(false);
+				popupRef.current = null;
+			}
+		}, 500);
+	}, [closePopup]);
+
 	const logout = useCallback(async () => {
 		console.log('[AuthProvider] Logging out');
-
-		try {
-			// Call backend logout
-			await fetch('/api/logout', { method: 'POST' });
-		} catch (e) {
-			console.warn('[AuthProvider] Backend logout failed (continuing):', e);
-		}
-
-		// Clear local state
+		// Clear state first
 		setPrivyToken(null);
 		setWsPet(null);
-		setPopupStatus(null);
 		setLoginError(null);
-		cleanupPopup();
+		setIsLoggingIn(false);
+		closePopup();
 
-		// Logout from Privy
+		// Call backend logout
 		try {
-			await privyLogout();
-		} catch (error) {
-			console.warn('[AuthProvider] Privy logout error:', error);
+			await fetch('/api/logout', { method: 'POST' });
+		} catch (e) {
+			// ignore
 		}
+	}, [closePopup]);
 
-		console.log('[AuthProvider] Logout successful');
-	}, [privyLogout, cleanupPopup]);
-
-	// Login after logout (forces a fresh login)
-	const loginAfterLogout = useCallback(async () => {
-		console.log('[AuthProvider] Login after logout');
-
-		// First ensure we're logged out
-		await logout();
-
-		// Then open popup with forceLogout flag
-		// Small delay to ensure logout completes
-		setTimeout(() => {
-			openLoginPopup(true);
-		}, 100);
-	}, [logout, openLoginPopup]);
-
-	// Context value
-	const value = useMemo(() => ({
-		// State
-		ready,
-		authenticated,
-		user: null, // For compatibility
-		wsPet,
-		isModalOpen: isLoggingIn, // Alias for isLoggingIn
-		authError: loginError, // Alias for loginError
-		authFailed: !!loginError,
-		popupStatus,
-
-		// Environment info
-		isElectron: isElectron(),
-		isIframe: isInIframe(),
-
-		// Actions
-		login,
-		logout,
-		loginAfterLogout,
-	}), [
-		ready,
-		authenticated,
-		wsPet,
-		isLoggingIn,
-		loginError,
-		popupStatus,
-		login,
-		logout,
-		loginAfterLogout,
-	]);
-
-	return (
-		<AuthContext.Provider value={value}>
-			{children}
-		</AuthContext.Provider>
+	const value = useMemo(
+		() => ({
+			authenticated,
+			wsPet,
+			isModalOpen: isLoggingIn,
+			authError: loginError,
+			login,
+			logout,
+			ready: true,
+		}),
+		[authenticated, wsPet, isLoggingIn, loginError, login, logout]
 	);
+
+	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Hook to use auth context
 export const useAuth = () => {
-	const context = useContext(AuthContext);
-	if (!context) {
-		throw new Error('useAuth must be used within an AuthProvider');
-	}
-	return context;
+	const ctx = useContext(AuthContext);
+	if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+	return ctx;
 };
 
 export default AuthProvider;

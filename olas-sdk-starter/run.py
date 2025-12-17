@@ -15,6 +15,21 @@ from typing import Optional
 # Add the current directory to Python path for local imports
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+# Load environment variables from .env file early
+try:
+    from dotenv import load_dotenv
+
+    # Load .env file from the current directory
+    env_path = Path(__file__).parent / ".env"
+    if env_path.exists():
+        load_dotenv(dotenv_path=env_path)
+    else:
+        # Also try loading from parent directory
+        load_dotenv()
+except ImportError:
+    # python-dotenv not available, continue without it
+    pass
+
 import typing_extensions_patch  # noqa: F401  # ensures Sentinel backport if needed
 from eth_account import Account
 
@@ -100,6 +115,9 @@ def read_ethereum_private_key(password: Optional[str] = None) -> Optional[str]:
             except Exception:
                 continue
         if env_key and env_key.strip():
+            # If password not provided, try to get it from environment
+            if password is None:
+                password = os.environ.get("ETH_PRIVATE_KEY_PASSWORD")
             processed = _prepare_private_key_material(
                 env_key, password, "environment variable"
             )

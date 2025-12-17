@@ -10,7 +10,7 @@ from typing import Dict, Any, Optional, TYPE_CHECKING
 from .pett_websocket_client import PettWebSocketClient
 
 if TYPE_CHECKING:
-    from .decision_engine import PetDecisionEngine
+    from .decision_engine import PetDecisionMaker
 
 # Load environment variables
 load_dotenv()
@@ -26,7 +26,7 @@ class PetTelegramBot:
     def __init__(
         self,
         websocket_client: Optional[PettWebSocketClient] = None,
-        decision_engine: Optional["PetDecisionEngine"] = None,
+        decision_engine: Optional["PetDecisionMaker"] = None,
         is_prod: bool = True,
     ):
         """Initialize the Telegram bot with shared WebSocket and decision engine.
@@ -42,9 +42,10 @@ class PetTelegramBot:
         # Use shared components to avoid duplicates
         self.websocket_client = websocket_client
         self.engine = decision_engine
-        self.pett_tools = decision_engine.pett_tools if decision_engine else None
-        self.agent = decision_engine.agent if decision_engine else None
-        self.model = decision_engine.model if decision_engine else None
+        # PetDecisionMaker doesn't have pett_tools, agent, or model attributes
+        self.pett_tools = None
+        self.agent = None
+        self.model = None
         self.is_prod = is_prod
 
         # Initialize Telegram bot

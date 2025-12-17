@@ -28,7 +28,6 @@ from web3.types import TxParams
 from .gas_limits import MAX_TRANSACTION_GAS
 from .nonce_utils import get_shared_nonce_lock
 
-# Contract address provided by the user.
 DEFAULT_ACTION_REPO_ADDRESS = "0x907afc85f3922cbdeb7b9ed806742b4ef998df31"
 
 
@@ -376,8 +375,23 @@ class ActionRecorder:
                 safe_contract = w3.eth.contract(address=safe_checksum, abi=SAFE_ABI)
                 # Extra diagnostics: confirm resolved Safe and chain id
                 try:
+                    chain_id = w3.eth.chain_id  # type: ignore[attr-defined]
+                    account_addr = account.address
+                    account_checksum = Web3.to_checksum_address(account_addr)
                     self._logger.info(
-                        f"Using Safe {safe_checksum} on chainId {w3.eth.chain_id}"
+                        "Using Safe %s on chainId %s with Agent EOA %s",
+                        safe_checksum,
+                        chain_id,
+                        account_checksum,
+                    )
+                    # Log private key source for debugging (first/last chars only)
+                    pk_source = "environment variable or file"
+                    if os.environ.get("ETH_PRIVATE_KEY"):
+                        pk_source = "ETH_PRIVATE_KEY env var"
+                    elif os.environ.get("CONNECTION_CONFIGS_CONFIG_ETH_PRIVATE_KEY"):
+                        pk_source = "CONNECTION_CONFIGS_CONFIG_ETH_PRIVATE_KEY env var"
+                    self._logger.debug(
+                        "Agent EOA %s loaded from %s", account_checksum, pk_source
                     )
                 except Exception:
                     pass
@@ -1321,11 +1335,26 @@ class ActionRecorder:
             )
             return False
 
+        safe_address_str = "unknown"
+        try:
+            safe_address_str = Web3.to_checksum_address(safe.address)  # type: ignore[attr-defined]
+        except Exception:
+            pass
+
         try:
             owners_raw = list(safe.functions.getOwners().call())
+            self._logger.debug(
+                "Fetched Safe owners from %s: %s (raw count: %d)",
+                safe_address_str,
+                owners_raw,
+                len(owners_raw),
+            )
         except Exception as exc:
             self._logger.warning(
-                "Failed to refresh Safe owners during %s check: %s", context, exc
+                "Failed to refresh Safe owners during %s check for Safe %s: %s",
+                context,
+                safe_address_str,
+                exc,
             )
             if self._safe_owner_snapshot is None:
                 return False
@@ -1351,12 +1380,43 @@ class ActionRecorder:
         self._last_safe_owner_check = now
 
         if log_snapshot:
+            safe_addr_display = "unknown"
+            try:
+                safe_addr_display = Web3.to_checksum_address(safe.address)  # type: ignore[attr-defined]
+            except Exception:
+                pass
             self._logger.info(
-                f"Safe owners (n={len(normalized_owner_set)}): {sorted(normalized_owner_set)}"
+                "Safe %s owners (n=%d): %s",
+                safe_addr_display,
+                len(normalized_owner_set),
+                sorted(normalized_owner_set),
             )
             self._logger.info(
-                f"Safe threshold: {threshold if threshold is not None else 'unknown'}"
+                "Safe %s threshold: %s",
+                safe_addr_display,
+                threshold if threshold is not None else "unknown",
             )
+            is_owner_check = account_checksum in normalized_owner_set
+            self._logger.info(
+                "Agent EOA %s is %s in Safe owners",
+                account_checksum,
+                "present" if is_owner_check else "NOT present",
+            )
+            if not is_owner_check:
+                self._logger.error(
+                    "❌ Agent EOA %s is NOT an owner of Safe %s",
+                    account_checksum,
+                    safe_addr_display,
+                )
+                self._logger.error(
+                    "   Current Safe owners: %s",
+                    sorted(normalized_owner_set),
+                )
+                self._logger.error(
+                    "   To fix: Add %s as an owner to the Safe contract %s",
+                    account_checksum,
+                    safe_addr_display,
+                )
 
         if previous_snapshot is not None and normalized_owner_set != previous_snapshot:
             added = sorted(normalized_owner_set - previous_snapshot)
@@ -1390,8 +1450,45 @@ class ActionRecorder:
 
         is_owner = account_checksum in normalized_owner_set
         if not is_owner:
+            safe_address_str = "unknown"
+            try:
+                safe_address_str = Web3.to_checksum_address(safe.address)  # type: ignore[attr-defined]
+            except Exception:
+                pass
             self._logger.error(
-                "Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)"
+                "❌ Agent EOA is NOT an owner of the AI Agent Safe; execTransaction will revert (GS026)"
+            )
+            self._logger.error("   Safe address: %s", safe_address_str)
+            self._logger.error("   Agent EOA: %s", account_checksum)
+            self._logger.error(
+                "   Current Safe owners: %s",
+                (
+                    sorted(normalized_owner_set)
+                    if normalized_owner_set
+                    else ["<no owners>"]
+                ),
+            )
+            self._logger.error(
+                "   Safe threshold: %s",
+                threshold if threshold is not None else "unknown",
+            )
+            self._logger.error(
+                "   To fix: Add %s as an owner to the Safe contract %s using the Safe UI or contract",
+                account_checksum,
+                safe_address_str,
+            )
+            self._logger.error(
+                "   Verify: Check that ETH_PRIVATE_KEY in .env matches the Agent EOA address %s",
+                account_checksum,
+            )
+        else:
+            # Log success for debugging
+            self._logger.debug(
+                "Agent EOA verified as Safe owner: %s in Safe %s (owners: %s, threshold: %s)",
+                account_checksum,
+                getattr(safe, "address", "unknown"),
+                sorted(normalized_owner_set),
+                threshold if threshold is not None else "unknown",
             )
         return is_owner
 

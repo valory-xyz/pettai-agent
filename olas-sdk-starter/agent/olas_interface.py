@@ -864,14 +864,18 @@ class OlasInterface:
         private_key = (self.ethereum_private_key or "").strip()
         if not private_key:
             self.logger.info(
-                "Skipping action recorder initialisation: ethereum private key not available"
+                "Skipping action recorder initialisation: ethereum private key not available "
+                "(checked: ETH_PRIVATE_KEY, CONNECTION_CONFIGS_CONFIG_ETH_PRIVATE_KEY, "
+                "ethereum_private_key.txt files)"
             )
             return
 
         rpc_url = self._resolve_rpc_url()
         if not rpc_url:
             self.logger.info(
-                "Skipping action recorder initialisation: RPC endpoint not configured"
+                "Skipping action recorder initialisation: RPC endpoint not configured "
+                "(checked: ACTION_REPO_RPC_URL, BASE_LEDGER_RPC, ETH_RPC_URL, RPC_URL, "
+                "and CONNECTION_CONFIGS_CONFIG_ prefixed variants)"
             )
             return
 
@@ -879,20 +883,70 @@ class OlasInterface:
         contract_address = (contract_address_env or DEFAULT_ACTION_REPO_ADDRESS).strip()
         # The ActionRecorder resolves the Safe from CONNECTION_CONFIGS_CONFIG_SAFE_CONTRACT_ADDRESSES
 
+        safe_addr = (
+            os.environ.get("CONNECTION_CONFIGS_CONFIG_SAFE_CONTRACT_ADDRESS") or ""
+        ).strip()
+        if not safe_addr:
+            safe_addrs_json = os.environ.get(
+                "CONNECTION_CONFIGS_CONFIG_SAFE_CONTRACT_ADDRESSES"
+            )
+            if safe_addrs_json:
+                try:
+                    safe_addrs = json.loads(safe_addrs_json)
+                    if isinstance(safe_addrs, dict) and safe_addrs:
+                        safe_addr = "configured (JSON mapping)"
+                except Exception:
+                    pass
+
+        if not safe_addr:
+            self.logger.warning(
+                "Action recorder will require Safe address: "
+                "CONNECTION_CONFIGS_CONFIG_SAFE_CONTRACT_ADDRESS or "
+                "CONNECTION_CONFIGS_CONFIG_SAFE_CONTRACT_ADDRESSES not set"
+            )
+
         try:
             config = RecorderConfig(
                 private_key=private_key,
                 rpc_url=rpc_url,
                 contract_address=contract_address,
             )
+            self.logger.debug(
+                f"Initializing ActionRecorder with RPC={rpc_url[:20]}..., "
+                f"contract={contract_address}, safe={'configured' if safe_addr else 'not configured'}"
+            )
             self.action_recorder = ActionRecorder(config=config, logger=self.logger)
         except Exception as exc:
-            self.logger.error(f"Failed to initialise action recorder: {exc}")
+            self.logger.error(
+                f"Failed to initialise action recorder: {exc}", exc_info=True
+            )
             self.action_recorder = None
 
     def get_action_recorder(self) -> Optional[ActionRecorder]:
         """Return the configured action recorder, if available."""
         return self.action_recorder
+
+    def get_action_recorder_diagnostics(self) -> Dict[str, Any]:
+        """Return diagnostic information about why the action recorder might be disabled."""
+        diagnostics = {
+            "recorder_exists": self.action_recorder is not None,
+            "recorder_enabled": False,
+            "private_key_available": bool((self.ethereum_private_key or "").strip()),
+            "rpc_url_available": bool(self._resolve_rpc_url()),
+            "rpc_url_value": self._resolve_rpc_url(),
+            "safe_address_available": bool(
+                os.environ.get("CONNECTION_CONFIGS_CONFIG_SAFE_CONTRACT_ADDRESS")
+                or os.environ.get("CONNECTION_CONFIGS_CONFIG_SAFE_CONTRACT_ADDRESSES")
+            ),
+        }
+
+        if self.action_recorder:
+            diagnostics["recorder_enabled"] = self.action_recorder.is_enabled
+            diagnostics["account_address"] = self.action_recorder.account_address
+            diagnostics["contract_address"] = self.action_recorder.contract_address
+            diagnostics["rpc_url"] = self.action_recorder.rpc_url
+
+        return diagnostics
 
     def get_staking_checkpoint_client(self) -> Optional[StakingCheckpointClient]:
         """Return the staking checkpoint client, if available."""

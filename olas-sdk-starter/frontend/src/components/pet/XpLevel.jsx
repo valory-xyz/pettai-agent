@@ -21,7 +21,6 @@ const XpLevel = ({ level, xp, xpMin, xpMax, border = true, margin = true, paddin
 		: 0;
 
 	if (!hasAll) {
-		console.log('Missing XP level data', level, xp, xpMin, xpMax);
 		return null;
 	}
 

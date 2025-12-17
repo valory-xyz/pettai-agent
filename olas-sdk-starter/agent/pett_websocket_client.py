@@ -14,6 +14,12 @@ from dotenv import load_dotenv
 
 from .action_recorder import ActionRecorder
 
+try:
+    from .constants import REQUIRED_ACTIONS_PER_EPOCH
+except ImportError:
+    # Fallback for when constants module is not available
+    REQUIRED_ACTIONS_PER_EPOCH = 9
+
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
@@ -155,7 +161,7 @@ class PettWebSocketClient:
         # Fallback if no epoch checker is set
         if not self._onchain_recording_enabled:
             logger.info(
-                "Already have 8+ verified on-chain txs (staking threshold met); "
+                f"Already have {REQUIRED_ACTIONS_PER_EPOCH}+ verified on-chain txs (staking threshold met); "
                 "skipping on-chain recording for %s",
                 action_type,
             )
@@ -223,7 +229,7 @@ class PettWebSocketClient:
         # Now decide whether to record based on current state
         if not self._onchain_recording_enabled:
             logger.info(
-                "⏭️ Already have 8+ verified on-chain txs (staking threshold met); "
+                f"⏭️ Already have {REQUIRED_ACTIONS_PER_EPOCH}+ verified on-chain txs (staking threshold met); "
                 "skipping on-chain recording for %s",
                 action_type,
             )

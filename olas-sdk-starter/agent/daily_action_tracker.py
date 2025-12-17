@@ -4,6 +4,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+try:
+    from .constants import REQUIRED_ACTIONS_PER_EPOCH
+except ImportError:
+    # Fallback for when constants module is not available
+    REQUIRED_ACTIONS_PER_EPOCH = 9
+
 logger = logging.getLogger(__name__)
 
 
@@ -13,7 +19,7 @@ class DailyActionTracker:
     def __init__(
         self,
         storage_path: Path,
-        required_actions: int = 8,
+        required_actions: int = REQUIRED_ACTIONS_PER_EPOCH,
         *,
         reset_on_start: bool = False,
     ) -> None:

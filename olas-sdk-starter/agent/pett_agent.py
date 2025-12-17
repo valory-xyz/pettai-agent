@@ -39,6 +39,7 @@ from .decision_engine import (
 )
 from .daily_action_tracker import DailyActionTracker
 from .staking_checkpoint import DEFAULT_LIVENESS_PERIOD
+from .constants import REQUIRED_ACTIONS_PER_EPOCH
 
 # Load environment variables
 load_dotenv()
@@ -52,7 +53,8 @@ class PettAgent:
     WAKE_ENERGY_THRESHOLD = 65.0
     POST_KPI_SLEEP_TRIGGER = 85.0
     POST_KPI_SLEEP_TARGET = 80.0
-    REQUIRED_ACTIONS_PER_EPOCH = 8  # 8 IN THE STAKING CONTRACT. TODO ideally we should fetch this directly from the staking contract.
+    # Use constant from constants module for single source of truth
+    REQUIRED_ACTIONS_PER_EPOCH: int = REQUIRED_ACTIONS_PER_EPOCH
     CRITICAL_CORE_STATS: Tuple[str, ...] = ("hunger", "health", "hygiene", "happiness")
     CRITICAL_STAT_THRESHOLD = 5.0
     ECONOMY_BALANCE_THRESHOLD = 350.0
@@ -171,11 +173,14 @@ class PettAgent:
         """Return a callback for recording successful on-chain actions.
 
         This callback is called only when an on-chain action recording
-        actually succeeds, ensuring the counter only tracks verified txs.
+        actually succeeds. Note: The action is already recorded in the daily
+        tracker when it succeeds (regardless of on-chain status), so this
+        callback primarily serves to log the on-chain verification status.
         """
 
         def record_success(action_name: str) -> None:
-            self._daily_action_tracker.record_action(action_name)
+            # Action is already recorded in _execute_action_with_tracking when it succeeds,
+            # so we don't need to record it again here. Just log the on-chain verification.
             completed = self._daily_action_tracker.actions_completed()
             remaining = self._daily_action_tracker.actions_remaining()
             self.logger.info(
@@ -2808,9 +2813,21 @@ class PettAgent:
         ):
             success = True
 
-        # Note: counter increment moved to websocket client's _onchain_success_recorder
-        # Only successful on-chain recordings count toward the staking threshold
+        # Note: on-chain counter increment happens in websocket client's _onchain_success_recorder
+        # Only successful on-chain recordings count toward the staking threshold.
+        # However, we still want to track ALL successful actions for the UI action history,
+        # even if on-chain recording was skipped or failed.
         if success:
+            # Always record successful actions for UI action history
+            # (on-chain recording may succeed later via _onchain_success_recorder callback,
+            # but we want to show the action in UI even if on-chain recording fails or is skipped)
+            self._daily_action_tracker.record_action(normalized_name)
+            if skipped_onchain_recording:
+                self.logger.debug(
+                    "📝 Recorded %s in action history (on-chain recording skipped)",
+                    normalized_name,
+                )
+
             await self._log_action_progress(
                 normalized_name, skipped_onchain_recording=skipped_onchain_recording
             )

@@ -2,8 +2,8 @@
 Integration tests for on-chain recording guarantee.
 
 These tests verify the FULL flow from decision engine → execution → websocket client
-to ensure that recordAction is actually called when actions_recorded < 8 and NOT called
-when actions_recorded >= 8.
+to ensure that recordAction is actually called when actions_recorded < REQUIRED_ACTIONS_PER_EPOCH and NOT called
+when actions_recorded >= REQUIRED_ACTIONS_PER_EPOCH.
 
 This complements the unit tests in decision_making.py which only test the decision engine logic.
 """
@@ -29,6 +29,11 @@ from decision_engine import (
     PetDecisionMaker,
     execute_decision,
 )
+
+try:
+    from constants import REQUIRED_ACTIONS_PER_EPOCH
+except ImportError:
+    REQUIRED_ACTIONS_PER_EPOCH = 9
 
 
 # ==============================================================================
@@ -263,7 +268,7 @@ def create_context(
     token_balance: float = 100.0,
     owned_consumables: List[str] = None,
     actions_recorded: int = 0,
-    required_actions: int = 8,
+    required_actions: int = REQUIRED_ACTIONS_PER_EPOCH,
 ) -> PetContext:
     """Helper to create a PetContext with specified stats."""
     return PetContext(
@@ -310,8 +315,8 @@ class TestDecisionEngineIntegration:
     async def test_first_8_actions_record_onchain(
         self, decision_maker, executor, client
     ):
-        """First 8 actions should trigger on-chain recording."""
-        for action_num in range(8):
+        f"First {REQUIRED_ACTIONS_PER_EPOCH} actions should trigger on-chain recording."
+        for action_num in range(REQUIRED_ACTIONS_PER_EPOCH):
             client.clear_calls()
             context = create_context(
                 hunger=80,
@@ -320,7 +325,7 @@ class TestDecisionEngineIntegration:
                 happiness=80,
                 hygiene=30,  # Low hygiene triggers SHOWER
                 actions_recorded=action_num,
-                required_actions=8,
+                required_actions=REQUIRED_ACTIONS_PER_EPOCH,
             )
 
             decision = decision_maker.decide(context)
@@ -355,7 +360,7 @@ class TestDecisionEngineIntegration:
                 happiness=80,
                 hygiene=30,  # Low hygiene triggers SHOWER
                 actions_recorded=action_num,
-                required_actions=8,
+                required_actions=REQUIRED_ACTIONS_PER_EPOCH,
             )
 
             decision = decision_maker.decide(context)
@@ -382,7 +387,7 @@ class TestDecisionEngineIntegration:
 
         For each permutation, verify that:
         1. With actions_recorded=0: should_record_onchain=True and recordAction is called
-        2. With actions_recorded=8: should_record_onchain=False and recordAction is NOT called
+        2. With actions_recorded=REQUIRED_ACTIONS_PER_EPOCH: should_record_onchain=False and recordAction is NOT called
         """
         from itertools import product
 
@@ -432,7 +437,7 @@ class TestDecisionEngineIntegration:
                     token_balance=token_balance,
                     owned_consumables=[],  # No consumables for predictable testing
                     actions_recorded=0,
-                    required_actions=8,
+                    required_actions=REQUIRED_ACTIONS_PER_EPOCH,
                 )
 
                 decision = decision_maker.decide(context)
@@ -452,7 +457,7 @@ class TestDecisionEngineIntegration:
                     f"Expected 1 recordAction call, got {len(record_calls)}"
                 )
 
-                # Test with actions_recorded=8 (should NOT record)
+                # Test with actions_recorded=REQUIRED_ACTIONS_PER_EPOCH (should NOT record)
                 client.clear_calls()
                 context = create_context(
                     hunger=hunger,
@@ -462,8 +467,8 @@ class TestDecisionEngineIntegration:
                     hygiene=hygiene,
                     token_balance=token_balance,
                     owned_consumables=[],
-                    actions_recorded=8,
-                    required_actions=8,
+                    actions_recorded=REQUIRED_ACTIONS_PER_EPOCH,
+                    required_actions=REQUIRED_ACTIONS_PER_EPOCH,
                 )
 
                 decision = decision_maker.decide(context)
@@ -472,14 +477,14 @@ class TestDecisionEngineIntegration:
                 ), f"{full_name}: Should choose a valid action (got NONE)"
                 assert (
                     decision.should_record_onchain == False
-                ), f"{full_name} with actions_recorded=8: should_record_onchain should be False"
+                ), f"{full_name} with actions_recorded={REQUIRED_ACTIONS_PER_EPOCH}: should_record_onchain should be False"
 
                 success = await execute_decision(decision, executor)
                 assert success == True, f"{full_name}: Execution should succeed"
 
                 record_calls = client.get_record_action_calls()
                 assert len(record_calls) == 0, (
-                    f"{full_name} ({decision.action.name}) with actions_recorded=8: "
+                    f"{full_name} ({decision.action.name}) with actions_recorded={REQUIRED_ACTIONS_PER_EPOCH}: "
                     f"Expected 0 recordAction calls, got {len(record_calls)}"
                 )
 
@@ -487,7 +492,7 @@ class TestDecisionEngineIntegration:
     async def test_8_action_sequence_all_recorded(
         self, decision_maker, executor, client
     ):
-        """Run 8 actions in sequence - all should be recorded on-chain."""
+        f"Run {REQUIRED_ACTIONS_PER_EPOCH} actions in sequence - all should be recorded on-chain."
         client.clear_calls()
         all_recorded = []
 
@@ -499,7 +504,7 @@ class TestDecisionEngineIntegration:
                 happiness=80,
                 hygiene=30,  # Low hygiene triggers SHOWER
                 actions_recorded=action_num,
-                required_actions=8,
+                required_actions=REQUIRED_ACTIONS_PER_EPOCH,
             )
 
             decision = decision_maker.decide(context)
@@ -512,11 +517,11 @@ class TestDecisionEngineIntegration:
 
             all_recorded.append(decision.action)
 
-        # Verify all 8 actions were recorded
+        # Verify all actions were recorded
         record_calls = client.get_record_action_calls()
         assert (
-            len(record_calls) == 8
-        ), f"Expected 8 recordAction calls for 8 actions, got {len(record_calls)}"
+            len(record_calls) == REQUIRED_ACTIONS_PER_EPOCH
+        ), f"Expected {REQUIRED_ACTIONS_PER_EPOCH} recordAction calls for {REQUIRED_ACTIONS_PER_EPOCH} actions, got {len(record_calls)}"
 
         # Verify all calls were for recording
         for i, call_data in enumerate(record_calls):
@@ -641,7 +646,7 @@ class TestFullFlowIntegration:
         self,
         client: MockWebSocketClient,
         actions_recorded: int,
-        required_actions: int = 8,
+        required_actions: int = REQUIRED_ACTIONS_PER_EPOCH,
     ):
         """Simulate how pett_agent sets onchain_recording_enabled."""
         actions_remaining = required_actions - actions_recorded
@@ -651,7 +656,7 @@ class TestFullFlowIntegration:
 
     @pytest.mark.asyncio
     async def test_full_flow_first_8_actions(self, decision_maker, executor, client):
-        """Full flow: first 8 actions should all be recorded."""
+        f"Full flow: first {REQUIRED_ACTIONS_PER_EPOCH} actions should all be recorded."
         client.clear_calls()
         recorded_count = 0
 
@@ -670,7 +675,7 @@ class TestFullFlowIntegration:
                 happiness=80,
                 hygiene=30,
                 actions_recorded=action_num,
-                required_actions=8,
+                required_actions=REQUIRED_ACTIONS_PER_EPOCH,
             )
 
             decision = decision_maker.decide(context)
@@ -684,18 +689,18 @@ class TestFullFlowIntegration:
             record_calls = client.get_record_action_calls()
             recorded_count = len(record_calls)
             assert recorded_count == action_num + 1, (
-                f"After action {action_num+1}/8: Expected {action_num+1} recorded actions, "
+                f"After action {action_num+1}/{REQUIRED_ACTIONS_PER_EPOCH}: Expected {action_num+1} recorded actions, "
                 f"got {recorded_count}"
             )
 
-        # Final verification: all 8 should be recorded
+        # Final verification: all should be recorded
         assert (
-            recorded_count == 8
-        ), f"Expected 8 total recorded actions, got {recorded_count}"
+            recorded_count == REQUIRED_ACTIONS_PER_EPOCH
+        ), f"Expected {REQUIRED_ACTIONS_PER_EPOCH} total recorded actions, got {recorded_count}"
 
     @pytest.mark.asyncio
     async def test_full_flow_actions_after_8(self, decision_maker, executor, client):
-        """Full flow: actions after 8 should NOT be recorded."""
+        f"Full flow: actions after {REQUIRED_ACTIONS_PER_EPOCH} should NOT be recorded."
         client.clear_calls()
 
         for action_num in range(8, 12):
@@ -713,7 +718,7 @@ class TestFullFlowIntegration:
                 happiness=80,
                 hygiene=30,
                 actions_recorded=action_num,
-                required_actions=8,
+                required_actions=REQUIRED_ACTIONS_PER_EPOCH,
             )
 
             decision = decision_maker.decide(context)
@@ -741,7 +746,9 @@ class TestFullFlowIntegration:
         for action_num in range(4):
             should_record = self.simulate_set_onchain_recording(client, action_num)
             context = create_context(
-                hygiene=30, actions_recorded=action_num, required_actions=8
+                hygiene=30,
+                actions_recorded=action_num,
+                required_actions=REQUIRED_ACTIONS_PER_EPOCH,
             )
             decision = decision_maker.decide(context)
             await execute_decision(decision, executor)
@@ -751,27 +758,31 @@ class TestFullFlowIntegration:
             should_record = self.simulate_set_onchain_recording(client, action_num)
             await client.shower_pet()  # Direct call, uses _onchain_recording_enabled
 
-        # Last 2 actions via decision engine again
-        for action_num in range(6, 8):
+        # Last actions via decision engine again
+        for action_num in range(6, REQUIRED_ACTIONS_PER_EPOCH):
             should_record = self.simulate_set_onchain_recording(client, action_num)
             context = create_context(
-                hygiene=30, actions_recorded=action_num, required_actions=8
+                hygiene=30,
+                actions_recorded=action_num,
+                required_actions=REQUIRED_ACTIONS_PER_EPOCH,
             )
             decision = decision_maker.decide(context)
             await execute_decision(decision, executor)
 
-        # All 8 should be recorded
+        # All actions should be recorded
         record_calls = client.get_record_action_calls()
         assert (
-            len(record_calls) == 8
-        ), f"Expected 8 recorded actions across mixed paths, got {len(record_calls)}"
+            len(record_calls) == REQUIRED_ACTIONS_PER_EPOCH
+        ), f"Expected {REQUIRED_ACTIONS_PER_EPOCH} recorded actions across mixed paths, got {len(record_calls)}"
 
-        # Action 9 should NOT be recorded
-        should_record = self.simulate_set_onchain_recording(client, 8)
+        # Action after REQUIRED_ACTIONS_PER_EPOCH should NOT be recorded
+        should_record = self.simulate_set_onchain_recording(
+            client, REQUIRED_ACTIONS_PER_EPOCH
+        )
         await client.shower_pet()
         record_calls = client.get_record_action_calls()
         assert (
-            len(record_calls) == 8
+            len(record_calls) == REQUIRED_ACTIONS_PER_EPOCH
         ), f"Action 9 should not be recorded, but got {len(record_calls)} total"
 
 

@@ -19,6 +19,12 @@ from typing import (
 )
 import logging
 
+try:
+    from .constants import REQUIRED_ACTIONS_PER_EPOCH
+except ImportError:
+    # Fallback for when constants module is not available
+    REQUIRED_ACTIONS_PER_EPOCH = 9
+
 logger = logging.getLogger(__name__)
 
 
@@ -117,7 +123,7 @@ class PetContext:
     token_balance: float = 0.0
     owned_consumables: List[str] = field(default_factory=list)
     actions_recorded_this_epoch: int = 0
-    required_actions_per_epoch: int = 8
+    required_actions_per_epoch: int = REQUIRED_ACTIONS_PER_EPOCH
 
     @property
     def needs_more_onchain_actions(self) -> bool:

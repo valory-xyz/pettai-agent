@@ -84,6 +84,10 @@ class PettWebSocketClient:
         self._listener_task: Optional[asyncio.Task] = None
         self._jwt_expired: bool = False
         self._auth_ping_lock: asyncio.Lock = asyncio.Lock()
+        # Lock to prevent concurrent reconnection attempts
+        self._reconnect_lock: asyncio.Lock = asyncio.Lock()
+        # Flag to track if reconnection is in progress
+        self._reconnecting: bool = False
         # Outgoing message telemetry recorder: (message, success, error)
         self._telemetry_recorder: Optional[
             Callable[[Dict[str, Any], bool, Optional[str]], None]
@@ -715,6 +719,92 @@ class PettWebSocketClient:
 
         return False
 
+    async def _ensure_connected(self, skip_lock_check: bool = False) -> bool:
+        """Ensure WebSocket is connected and authenticated, reconnecting if needed.
+
+        Args:
+            skip_lock_check: If True, skip the lock check (used internally to avoid deadlock)
+        """
+        # Check if already reconnecting (outside lock to avoid blocking)
+        if self._reconnecting and not skip_lock_check:
+            # Wait a bit and check if connection is now established
+            for _ in range(10):  # Wait up to 5 seconds
+                await asyncio.sleep(0.5)
+                if self.connection_established and self.authenticated:
+                    return True
+            return False
+
+        # Quick check: if already connected and authenticated, return True
+        if self.connection_established and self.authenticated:
+            return True
+
+        # Acquire lock only if we're not already inside a reconnection
+        if not skip_lock_check:
+            if self._reconnect_lock.locked():
+                # Lock is held, wait for it to complete
+                for _ in range(10):
+                    await asyncio.sleep(0.5)
+                    if self.connection_established and self.authenticated:
+                        return True
+                return False
+
+        async with self._reconnect_lock:
+            # Double-check after acquiring lock
+            if self.connection_established and self.authenticated:
+                return True
+
+            if self._reconnecting:
+                # Another coroutine is already reconnecting
+                for _ in range(10):
+                    await asyncio.sleep(0.5)
+                    if self.connection_established and self.authenticated:
+                        return True
+                return False
+
+            self._reconnecting = True
+            try:
+                logger.info("🔄 Ensuring WebSocket connection is active...")
+
+                # Determine which token to use
+                token_to_use = None
+                if self._was_previously_authenticated and self._saved_auth_token:
+                    token_to_use = self._saved_auth_token
+                    logger.debug("Using saved auth token for reconnection")
+                elif self.privy_token and self.privy_token.strip():
+                    token_to_use = self.privy_token
+                    logger.debug("Using environment auth token for reconnection")
+
+                if not token_to_use:
+                    logger.warning("No auth token available for reconnection")
+                    return False
+
+                # Disconnect if there's a stale connection
+                if self.websocket:
+                    try:
+                        # Temporarily mark as disconnected to avoid recursion
+                        old_connected = self.connection_established
+                        self.connection_established = False
+                        await self.disconnect()
+                    except Exception:
+                        pass
+
+                # Reconnect and authenticate (this may call _send_message, but we're protected by the lock)
+                # Set connection_established to False before reconnecting to prevent recursion
+                self.connection_established = False
+                self.authenticated = False
+
+                result = await self.connect_and_authenticate(
+                    max_retries=3, auth_timeout=10
+                )
+                if result:
+                    logger.info("✅ Successfully reconnected and re-authenticated")
+                    return True
+                else:
+                    logger.warning("❌ Failed to reconnect and re-authenticate")
+                    return False
+            finally:
+                self._reconnecting = False
+
     async def auth_ping(self, token: Optional[str] = None, timeout: int = 10) -> bool:
         """Send a lightweight AUTH to refresh pet data without restarting the client."""
         auth_token = (token or self.privy_token or "").strip()
@@ -743,13 +833,55 @@ class PettWebSocketClient:
     async def _send_message(self, message: Dict[str, Any]) -> bool:
         """Send a message to the WebSocket server."""
         if not self.websocket or not self.connection_established:
-            logger.error("WebSocket not connected")
-            if self._telemetry_recorder:
-                try:
-                    self._telemetry_recorder(message, False, "WebSocket not connected")
-                except Exception:
-                    pass
-            return False
+            # If we're already reconnecting, wait for it to complete instead of starting a new one
+            if self._reconnecting:
+                logger.debug(
+                    "Connection in progress, waiting for reconnection to complete..."
+                )
+                for _ in range(20):  # Wait up to 10 seconds
+                    await asyncio.sleep(0.5)
+                    if self.connection_established and self.authenticated:
+                        # Connection is now established, proceed with sending
+                        break
+                else:
+                    # Still not connected after waiting
+                    logger.error(
+                        "WebSocket still not connected after waiting for reconnection"
+                    )
+                    if self._telemetry_recorder:
+                        try:
+                            self._telemetry_recorder(
+                                message,
+                                False,
+                                "WebSocket not connected after reconnection wait",
+                            )
+                        except Exception:
+                            pass
+                    return False
+            else:
+                logger.error("WebSocket not connected")
+                # Try to reconnect if we have a token
+                if self.privy_token or self._saved_auth_token:
+                    logger.info("🔄 Attempting to reconnect before sending message...")
+                    reconnected = await self._ensure_connected()
+                    if not reconnected:
+                        if self._telemetry_recorder:
+                            try:
+                                self._telemetry_recorder(
+                                    message, False, "WebSocket not connected"
+                                )
+                            except Exception:
+                                pass
+                        return False
+                else:
+                    if self._telemetry_recorder:
+                        try:
+                            self._telemetry_recorder(
+                                message, False, "WebSocket not connected"
+                            )
+                        except Exception:
+                            pass
+                    return False
 
         try:
             # Ensure a nonce is present on every outgoing message
@@ -767,8 +899,90 @@ class PettWebSocketClient:
                 except Exception:
                     pass
             return True
+        except (
+            websockets.exceptions.ConnectionClosed,
+            websockets.exceptions.InvalidState,
+        ) as e:
+            error_str = str(e)
+            logger.error(f"WebSocket connection error: {e}")
+            # Mark connection as dead
+            self.connection_established = False
+            self.authenticated = False
+
+            # Check if it's a keepalive timeout (1011) or connection closed
+            if (
+                "1011" in error_str
+                or "keepalive" in error_str.lower()
+                or "ping timeout" in error_str.lower()
+            ):
+                logger.warning(
+                    "🔄 Keepalive timeout detected - connection appears dead, will reconnect"
+                )
+
+            # Try to reconnect if we have a token and we're not already reconnecting
+            if (self.privy_token or self._saved_auth_token) and not self._reconnecting:
+                logger.info("🔄 Attempting to reconnect after connection error...")
+                reconnected = await self._ensure_connected()
+                if reconnected:
+                    # Retry sending the message after reconnection
+                    try:
+                        if "nonce" not in message:
+                            message["nonce"] = self._generate_nonce()
+                        message_json = json.dumps(message)
+                        await self.websocket.send(message_json)
+                        logger.info(
+                            f"📤 Sent message type: {message['type']} after reconnection"
+                        )
+                        if message.get("type") != "AUTH":
+                            logger.info(f"📤 Message content: {message_json}")
+                        if self._telemetry_recorder:
+                            try:
+                                self._telemetry_recorder(message, True, None)
+                            except Exception:
+                                pass
+                        return True
+                    except Exception as retry_e:
+                        logger.error(
+                            f"Failed to send message after reconnection: {retry_e}"
+                        )
+            elif self._reconnecting:
+                logger.debug(
+                    "Reconnection already in progress, skipping duplicate attempt"
+                )
+
+            if self._telemetry_recorder:
+                try:
+                    self._telemetry_recorder(message, False, str(e))
+                except Exception:
+                    pass
+            return False
         except Exception as e:
+            error_str = str(e)
             logger.error(f"Failed to send message: {e}")
+            # Check for connection-related errors in the exception message
+            if (
+                "1011" in error_str
+                or "keepalive" in error_str.lower()
+                or "ping timeout" in error_str.lower()
+                or "connection" in error_str.lower()
+            ):
+                # Mark connection as dead
+                self.connection_established = False
+                self.authenticated = False
+
+                # Try to reconnect if we have a token and we're not already reconnecting
+                if (
+                    self.privy_token or self._saved_auth_token
+                ) and not self._reconnecting:
+                    logger.info(
+                        "🔄 Connection error detected, attempting to reconnect..."
+                    )
+                    await self._ensure_connected()
+                elif self._reconnecting:
+                    logger.debug(
+                        "Reconnection already in progress, skipping duplicate attempt"
+                    )
+
             if self._telemetry_recorder:
                 try:
                     self._telemetry_recorder(message, False, str(e))
@@ -887,12 +1101,33 @@ class PettWebSocketClient:
                 except Exception as e:
                     logger.error(f"❌ Error handling WebSocket message: {e}")
 
-        except websockets.exceptions.ConnectionClosed:
-            logger.warning("⚠️ WebSocket connection closed during message listening")
+        except websockets.exceptions.ConnectionClosed as e:
+            logger.warning(
+                f"⚠️ WebSocket connection closed during message listening: {e}"
+            )
             self.connection_established = False
+            self.authenticated = False
+            # Try to reconnect automatically if we have a token
+            if self.privy_token or self._saved_auth_token:
+                logger.info(
+                    "🔄 Connection closed in listener, will attempt reconnection on next message"
+                )
         except Exception as e:
+            error_str = str(e)
             logger.error(f"❌ Error in WebSocket message listener: {e}")
             self.connection_established = False
+            self.authenticated = False
+            # Check if it's a connection-related error
+            if (
+                "1011" in error_str
+                or "keepalive" in error_str.lower()
+                or "ping timeout" in error_str.lower()
+            ):
+                logger.warning(
+                    "⚠️ Keepalive timeout in listener - connection appears dead"
+                )
+                if self.privy_token or self._saved_auth_token:
+                    logger.info("🔄 Will attempt reconnection on next message")
 
     async def _handle_message(self, message: Dict[str, Any]) -> None:
         """Handle incoming messages from the server."""

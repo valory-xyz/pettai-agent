@@ -23,7 +23,9 @@ from decision_engine import (
     ActionDecision,
     ActionConditions,
     PetDecisionMaker,
+    FailedAction,
 )
+from datetime import datetime, timedelta
 
 
 # ==============================================================================
@@ -1552,6 +1554,428 @@ class TestIntegration:
         # Should try health recovery (health < 70 with POTION available)
         assert decision2.action == ActionType.CONSUMABLES_USE
         assert "POTION" in decision2.params.get("consumable_id", "").upper()
+
+
+class TestFailedActionLoopPrevention:
+    """
+    Tests for preventing infinite retry loops when actions fail.
+
+    This addresses the bug where the agent would repeatedly try to use
+    a POTION that fails with "Pet does not have enough stats", getting
+    stuck in an infinite loop.
+    """
+
+    @pytest.fixture
+    def decision_maker(self):
+        return PetDecisionMaker()
+
+    def test_record_action_failure(self, decision_maker: PetDecisionMaker):
+        """Test that failures are recorded correctly."""
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            reason="Pet does not have enough stats",
+        )
+
+        failures = decision_maker.get_failed_actions()
+        assert len(failures) == 1
+        assert failures[0].action == ActionType.CONSUMABLES_USE
+        assert failures[0].params["consumable_id"] == "POTION"
+        # Reason is stored but doesn't affect matching
+        assert failures[0].reason == "Pet does not have enough stats"
+
+    def test_failure_matching_independent_of_reason(
+        self, decision_maker: PetDecisionMaker
+    ):
+        """
+        Test that failure matching works regardless of the error message.
+
+        The matching logic only uses action type and params, not the reason string.
+        This ensures the system works even if error messages change.
+        """
+        # Record failure with one error message
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            reason="Pet does not have enough stats",
+        )
+
+        # Should be blocked regardless of what reason we check with
+        assert decision_maker.is_action_blocked(
+            ActionType.CONSUMABLES_USE,
+            {"consumable_id": "POTION"},
+        )
+
+        # Record same action with completely different error message
+        decision_maker.clear_all_failures()
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            reason="Insufficient resources",  # Different error message
+        )
+
+        # Should still be blocked - matching is independent of reason
+        assert decision_maker.is_action_blocked(
+            ActionType.CONSUMABLES_USE,
+            {"consumable_id": "POTION"},
+        )
+
+    def test_is_action_blocked_after_failure(self, decision_maker: PetDecisionMaker):
+        """Test that failed actions are blocked."""
+        # Record a failure
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            reason="Server error",
+        )
+
+        # Check if blocked
+        assert decision_maker.is_action_blocked(
+            ActionType.CONSUMABLES_USE,
+            {"consumable_id": "POTION"},
+        )
+
+        # Different consumable should not be blocked
+        assert not decision_maker.is_action_blocked(
+            ActionType.CONSUMABLES_USE,
+            {"consumable_id": "BURGER"},
+        )
+
+        # Different action type should not be blocked
+        assert not decision_maker.is_action_blocked(ActionType.SLEEP)
+
+    def test_get_blocked_consumables(self, decision_maker: PetDecisionMaker):
+        """Test getting list of blocked consumables."""
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            reason="Error 1",
+        )
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "SALAD"},
+            reason="Error 2",
+        )
+
+        blocked = decision_maker.get_blocked_consumables()
+        assert "POTION" in blocked
+        assert "SALAD" in blocked
+        assert len(blocked) == 2
+
+    def test_health_recovery_skips_blocked_consumable(
+        self, decision_maker: PetDecisionMaker
+    ):
+        """
+        Test that health recovery skips blocked consumables and uses next best.
+
+        This is the exact scenario from the bug report:
+        - Pet has POTION
+        - POTION use fails with "Pet does not have enough stats"
+        - Agent should NOT keep retrying POTION, should try alternative
+        """
+        # Record that POTION failed
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            reason="Pet does not have enough stats",
+        )
+
+        # Create context with low health and multiple consumables
+        context = create_context(
+            hunger=80,
+            health=30,  # Low health triggers health recovery
+            energy=80,
+            happiness=80,
+            hygiene=80,
+            owned_consumables=["POTION", "SALAD"],  # Has POTION and SALAD
+            actions_recorded=0,
+        )
+
+        decision = decision_maker.decide(context)
+
+        # Should use SALAD instead of blocked POTION
+        assert decision.action == ActionType.CONSUMABLES_USE
+        assert decision.params.get("consumable_id") == "SALAD"
+
+    def test_hunger_recovery_skips_blocked_consumable(
+        self, decision_maker: PetDecisionMaker
+    ):
+        """Test that hunger recovery skips blocked food items."""
+        # Record that BURGER failed
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "BURGER"},
+            reason="Some error",
+        )
+
+        # Create context with low hunger
+        context = create_context(
+            hunger=30,  # Low hunger
+            health=80,
+            energy=80,
+            happiness=80,
+            hygiene=80,
+            owned_consumables=["BURGER", "COOKIE"],  # Has BURGER and COOKIE
+            actions_recorded=0,
+        )
+
+        decision = decision_maker.decide(context)
+
+        # Should use COOKIE instead of blocked BURGER
+        assert decision.action == ActionType.CONSUMABLES_USE
+        assert decision.params.get("consumable_id") == "COOKIE"
+
+    def test_critical_stats_skips_blocked_consumable(
+        self, decision_maker: PetDecisionMaker
+    ):
+        """Test that critical state handling skips blocked consumables."""
+        # Block BURGER
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "BURGER"},
+            reason="Error",
+        )
+
+        # Critical state with multiple consumables
+        context = create_context(
+            hunger=2,
+            health=2,
+            energy=50,  # Not too low to trigger sleep first
+            happiness=2,
+            hygiene=2,
+            owned_consumables=["BURGER", "SALAD"],
+            actions_recorded=0,
+        )
+
+        decision = decision_maker.decide(context)
+
+        # Should use SALAD (BURGER is blocked)
+        assert decision.action == ActionType.CONSUMABLES_USE
+        assert decision.params.get("consumable_id") == "SALAD"
+
+    def test_all_consumables_blocked_falls_back_to_free_action(
+        self, decision_maker: PetDecisionMaker
+    ):
+        """
+        When all owned consumables are blocked, should fall back to free actions.
+
+        This prevents the infinite loop from the bug report.
+        """
+        # Block all owned consumables
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            reason="Error",
+        )
+
+        context = create_context(
+            hunger=80,
+            health=30,  # Low health would normally trigger POTION use
+            energy=80,
+            happiness=80,
+            hygiene=50,  # Low enough to allow shower
+            owned_consumables=["POTION"],  # Only has blocked POTION
+            token_balance=0,  # Can't buy
+            actions_recorded=0,
+        )
+
+        decision = decision_maker.decide(context)
+
+        # Should NOT use POTION (blocked)
+        # Should fall back to next priority (hygiene -> SHOWER)
+        assert decision.action != ActionType.CONSUMABLES_USE
+        assert decision.action in (
+            ActionType.SHOWER,
+            ActionType.THROWBALL,
+            ActionType.RUB,
+            ActionType.SLEEP,
+        )
+
+    def test_failure_record_expires_after_cooldown(
+        self, decision_maker: PetDecisionMaker
+    ):
+        """Test that failure records expire and allow retry after cooldown."""
+        # Create an expired failure
+        old_failure = FailedAction(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            failed_at=datetime.now()
+            - timedelta(seconds=FailedAction.COOLDOWN_SECONDS + 10),
+            reason="Old error",
+        )
+        decision_maker._failed_actions.append(old_failure)
+
+        # Should be expired
+        assert old_failure.is_expired()
+
+        # Should not be blocked (expired failures are cleared)
+        assert not decision_maker.is_action_blocked(
+            ActionType.CONSUMABLES_USE,
+            {"consumable_id": "POTION"},
+        )
+
+    def test_clear_all_failures(self, decision_maker: PetDecisionMaker):
+        """Test clearing all failure records."""
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            reason="Error 1",
+        )
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_BUY,
+            params={"consumable_id": "BURGER"},
+            reason="Error 2",
+        )
+
+        assert len(decision_maker.get_failed_actions()) == 2
+
+        decision_maker.clear_all_failures()
+
+        assert len(decision_maker.get_failed_actions()) == 0
+
+    def test_update_existing_failure_record(self, decision_maker: PetDecisionMaker):
+        """Test that recording same failure updates timestamp instead of duplicating."""
+        # Record initial failure
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            reason="First error",
+        )
+
+        first_failure = decision_maker.get_failed_actions()[0]
+        first_time = first_failure.failed_at
+
+        # Small delay
+        import time
+
+        time.sleep(0.01)
+
+        # Record same failure again
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            reason="Second error",
+        )
+
+        # Should still have only 1 failure record
+        failures = decision_maker.get_failed_actions()
+        assert len(failures) == 1
+
+        # Timestamp should be updated
+        assert failures[0].failed_at > first_time
+        assert failures[0].reason == "Second error"
+
+    def test_no_infinite_loop_scenario(self, decision_maker: PetDecisionMaker):
+        """
+        Simulate the exact bug scenario: repeatedly failing POTION use.
+
+        Decision engine should not recommend the same failed action repeatedly.
+        Note: The error message doesn't matter - matching is based on action/params only.
+        """
+        context = create_context(
+            hunger=2.8,
+            health=59.3,  # Low health - would trigger POTION use
+            energy=95.2,
+            happiness=54.7,
+            hygiene=46.2,
+            owned_consumables=["POTION", "POTION", "POTION"],  # 3 potions
+            token_balance=59.14,
+            actions_recorded=0,
+            required_actions=9,
+        )
+
+        # First decision - should try POTION
+        decision1 = decision_maker.decide(context)
+        assert decision1.action == ActionType.CONSUMABLES_USE
+        consumable1 = decision1.params.get("consumable_id", "")
+        assert "POTION" in consumable1.upper()
+
+        # Simulate failure (error message can be anything - doesn't affect matching)
+        decision_maker.record_action_failure(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": consumable1},
+            reason="Server error: action failed",  # Generic error - any message works
+        )
+
+        # Second decision - should NOT try POTION again
+        decision2 = decision_maker.decide(context)
+
+        # Should choose a different action (not the blocked POTION)
+        if decision2.action == ActionType.CONSUMABLES_USE:
+            # If still consumable use, must be different consumable
+            consumable2 = decision2.params.get("consumable_id", "")
+            assert consumable2.upper() != consumable1.upper()
+        else:
+            # Or chose completely different action (fallback)
+            assert decision2.action in (
+                ActionType.SHOWER,
+                ActionType.THROWBALL,
+                ActionType.RUB,
+                ActionType.SLEEP,
+                ActionType.CONSUMABLES_BUY,
+            )
+
+
+class TestFailedActionDataclass:
+    """Tests for the FailedAction dataclass."""
+
+    def test_is_expired_fresh_failure(self):
+        """Fresh failure should not be expired."""
+        failure = FailedAction(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            failed_at=datetime.now(),
+        )
+        assert not failure.is_expired()
+
+    def test_is_expired_old_failure(self):
+        """Old failure should be expired."""
+        failure = FailedAction(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            failed_at=datetime.now()
+            - timedelta(seconds=FailedAction.COOLDOWN_SECONDS + 1),
+        )
+        assert failure.is_expired()
+
+    def test_matches_same_consumable(self):
+        """Should match same action and consumable."""
+        failure = FailedAction(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            failed_at=datetime.now(),
+        )
+        assert failure.matches(ActionType.CONSUMABLES_USE, {"consumable_id": "POTION"})
+
+    def test_matches_different_consumable(self):
+        """Should not match different consumable."""
+        failure = FailedAction(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            failed_at=datetime.now(),
+        )
+        assert not failure.matches(
+            ActionType.CONSUMABLES_USE, {"consumable_id": "BURGER"}
+        )
+
+    def test_matches_different_action_type(self):
+        """Should not match different action type."""
+        failure = FailedAction(
+            action=ActionType.CONSUMABLES_USE,
+            params={"consumable_id": "POTION"},
+            failed_at=datetime.now(),
+        )
+        assert not failure.matches(ActionType.SLEEP, {})
+
+    def test_matches_non_consumable_action(self):
+        """Non-consumable actions should match on action type only."""
+        failure = FailedAction(
+            action=ActionType.THROWBALL,
+            params={},
+            failed_at=datetime.now(),
+        )
+        assert failure.matches(ActionType.THROWBALL, {})
+        assert failure.matches(ActionType.THROWBALL, {"some": "param"})
 
 
 if __name__ == "__main__":

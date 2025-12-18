@@ -48,7 +48,7 @@ class AgentPerformanceStore:
         if not self.is_enabled:
             return
         try:
-            self._store_path.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
+            self._root_path.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
             if not self._file_path.exists():  # type: ignore[union-attr]
                 self._write_payload(self._default_payload())
         except Exception as exc:
@@ -75,7 +75,7 @@ class AgentPerformanceStore:
         if not self.is_enabled:
             return
         try:
-            self._store_path.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
+            self._root_path.mkdir(parents=True, exist_ok=True)  # type: ignore[union-attr]
             with self._file_path.open("w", encoding="utf-8") as handle:  # type: ignore[union-attr]
                 json.dump(payload, handle, indent=2)
         except Exception as exc:

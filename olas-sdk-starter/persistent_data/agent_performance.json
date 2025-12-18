@@ -1,0 +1,18 @@
+{
+  "timestamp": 1766025727,
+  "metrics": [
+    {
+      "name": "Pet Name",
+      "is_primary": false,
+      "description": "Latest pet name received from Pett servers.",
+      "value": "CrazyDev23"
+    },
+    {
+      "name": "Pet Status",
+      "is_primary": false,
+      "description": "Reports whether the pet is alive or dead.",
+      "value": "alive"
+    }
+  ],
+  "agent_behavior": "Make sure to login to your favourite pet through the Agent Profile to enable autonomous pet sitting actions!"
+}

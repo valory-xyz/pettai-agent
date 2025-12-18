@@ -136,7 +136,7 @@ class PettAgent:
         self._daily_action_tracker = DailyActionTracker(
             tracker_path,
             required_actions=self.REQUIRED_ACTIONS_PER_EPOCH,
-            reset_on_start=True,
+            reset_on_start=False,  # Preserve actions across restarts; epoch-based reset handles new days
         )
         self._economy_mode_active: bool = False
         self._owned_consumables_cache: Dict[str, "PettAgent.OwnedConsumable"] = {}
@@ -1391,6 +1391,13 @@ class PettAgent:
                                                 self.logger.warning(
                                                     f"⚠️ Action execution failed: {decision.action.name} - {decision.reason}"
                                                 )
+                                                # Record failure to prevent retry loops
+                                                if self.decision_engine:
+                                                    self.decision_engine.record_action_failure(
+                                                        action=decision.action,
+                                                        params=decision.params,
+                                                        reason=f"Execution failed: {decision.reason}",
+                                                    )
                                         except Exception as e:
                                             self.logger.error(
                                                 f"❌ Action decision/execution error: {e}",

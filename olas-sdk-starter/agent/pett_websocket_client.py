@@ -461,18 +461,29 @@ class PettWebSocketClient:
         self._last_auth_error = None
         # logger.info("Privy token updated on WebSocket client")
 
-    def set_session_token(self, session_token: str) -> None:
+    def set_session_token(
+        self, session_token: str, *, expires_at: Optional[int] = None
+    ) -> None:
         """Update the stored session token without reconnecting."""
         token = (session_token or "").strip()
         if not token:
             logger.warning(
                 "⚠️ Attempted to set an empty session token - session auth will be disabled"
             )
-            self.session_token = ""
+            self.clear_session_token()
             return
         self.session_token = token
-        self._session_expires_at = None
+        self._session_expires_at = self._normalize_session_expiry(expires_at)
         self._last_auth_error = None
+
+    def clear_session_token(self) -> None:
+        """Clear the stored session token and expiry info."""
+        self.session_token = ""
+        self._session_expires_at = None
+        if self._saved_auth_type == "session":
+            self._saved_auth_token = None
+            self._saved_auth_type = None
+        logger.info("Session token cleared")
 
     def clear_saved_auth_token(self) -> None:
         """Clear saved auth token and previous authentication state."""
@@ -510,6 +521,18 @@ class PettWebSocketClient:
         if trimmed.lower().startswith("psess_"):
             return "session"
         return None
+
+    def _normalize_session_expiry(self, expires_at: Optional[int]) -> Optional[int]:
+        """Normalize an expiry timestamp to epoch milliseconds."""
+        if expires_at is None:
+            return None
+        try:
+            expiry = int(expires_at)
+        except (TypeError, ValueError):
+            return None
+        if expiry < 10**12:
+            return expiry * 1000
+        return expiry
 
     def _has_any_auth_token(self) -> bool:
         """Check if any auth token is available for reconnect/auth."""
@@ -1332,15 +1355,12 @@ class PettWebSocketClient:
             self._last_auth_error = None  # Clear any previous errors
             # Save auth token for reconnection use
             if session_token:
-                self.session_token = str(session_token).strip()
+                session_token_str = str(session_token).strip()
+                self.set_session_token(
+                    session_token_str, expires_at=session_expires_at
+                )
                 self._saved_auth_token = self.session_token
                 self._saved_auth_type = "session"
-                try:
-                    self._session_expires_at = (
-                        int(session_expires_at) if session_expires_at else None
-                    )
-                except (TypeError, ValueError):
-                    self._session_expires_at = None
             elif self._pending_auth_token and self._pending_auth_type:
                 self._saved_auth_token = self._pending_auth_token
                 self._saved_auth_type = self._pending_auth_type

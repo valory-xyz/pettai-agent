@@ -1,5 +1,16 @@
 # Dockerfile for Pett Agent - Olas SDK Compliant
 # Image naming convention: <author_name>/oar-<agent_name>:<agent_package_hash>
+#
+# Multi-platform build support:
+# - Build for AMD64: docker build --platform linux/amd64 -t <image:tag> .
+# - Build for ARM64: docker build --platform linux/arm64 -t <image:tag> .
+# - Build for current platform: docker build -t <image:tag> .
+#
+# Note: When pushing, only the platform you built will be pushed (not a multi-arch manifest)
+
+# ARG for platform (automatically set by Docker when using --platform flag)
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
 
 FROM python:3.11-slim
 

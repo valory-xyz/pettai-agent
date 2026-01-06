@@ -255,22 +255,33 @@ class ReactServerManager:
             return result == 0
 
     def _select_available_port(self, preferred: int) -> int:
-        """Pick an available port, preferring the given one; fallback to 8716 then scan upward."""
-        # If preferred is free, use it
+        """Pick an available port, preferring the given one; if occupied, scan upward for next available."""
+        # If preferred port is free, use it
         if not self._port_is_in_use(preferred):
+            logger.info(f"✅ Using available port {preferred}")
             return preferred
 
-        # Prefer 8716 (project default) if not the preferred
-        if preferred != 8716 and not self._port_is_in_use(8716):
-            return 8716
+        # Preferred port is occupied, scan upward starting from the next port
+        logger.info(
+            f"🔍 Port {preferred} is occupied, scanning for next available port..."
+        )
+        start = preferred + 1
+        # Ensure we don't go below a reasonable minimum
+        if start < 3000:
+            start = 3000
 
-        # Scan a small range for an open port
-        start = 8716 if preferred == 8716 else max(preferred, 3000)
+        # Scan a range for an open port (check up to 200 ports ahead)
         for candidate in range(start, start + 200):
             if not self._port_is_in_use(candidate):
+                logger.info(f"✅ Using available port {candidate}")
                 return candidate
 
         # Fallback to an ephemeral port assigned by OS if everything else fails
+        logger.warning(
+            f"⚠️ No port found in range {start}-{start + 199}, using OS-assigned ephemeral port"
+        )
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
             s.bind(("127.0.0.1", 0))
-            return s.getsockname()[1]
+            ephemeral_port = s.getsockname()[1]
+            logger.info(f"✅ Using available port {ephemeral_port}")
+            return ephemeral_port

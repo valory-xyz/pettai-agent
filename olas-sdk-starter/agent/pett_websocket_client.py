@@ -114,6 +114,12 @@ class PettWebSocketClient:
         self._pending_auth_token: Optional[str] = None
         self._pending_auth_type: Optional[str] = None
         self._session_expires_at: Optional[int] = None
+        self._session_store_path = self._resolve_session_store_path()
+        if not self.session_token:
+            stored_token, stored_expiry = self._load_persisted_session_token()
+            if stored_token:
+                self.session_token = stored_token
+                self._session_expires_at = stored_expiry
         self._ssl_context = self._build_ssl_context()
         # Callback to check for staking epoch changes when about to skip recording
         self._epoch_change_checker: Optional[Callable[[], Awaitable[bool]]] = None
@@ -475,6 +481,7 @@ class PettWebSocketClient:
         self.session_token = token
         self._session_expires_at = self._normalize_session_expiry(expires_at)
         self._last_auth_error = None
+        self._persist_session_token()
 
     def clear_session_token(self) -> None:
         """Clear the stored session token and expiry info."""
@@ -483,6 +490,7 @@ class PettWebSocketClient:
         if self._saved_auth_type == "session":
             self._saved_auth_token = None
             self._saved_auth_type = None
+        self._delete_persisted_session_token()
         logger.info("Session token cleared")
 
     def clear_saved_auth_token(self) -> None:
@@ -533,6 +541,62 @@ class PettWebSocketClient:
         if expiry < 10**12:
             return expiry * 1000
         return expiry
+
+    def _resolve_session_store_path(self) -> Path:
+        env_candidates = (
+            "CONNECTION_CONFIGS_CONFIG_STORE_PATH",
+            "CONNECTION_CONFIGS_STORE_PATH",
+            "STORE_PATH",
+        )
+        for env_name in env_candidates:
+            value = os.getenv(env_name)
+            if value and value.strip():
+                return Path(value).expanduser() / "pett_session_token.json"
+        return Path("./persistent_data") / "pett_session_token.json"
+
+    def _load_persisted_session_token(self) -> Tuple[str, Optional[int]]:
+        path = self._session_store_path
+        if not path.exists():
+            return "", None
+        try:
+            with path.open("r", encoding="utf-8") as handle:
+                data = json.load(handle)
+            if not isinstance(data, dict):
+                return "", None
+            token = data.get("sessionToken") or data.get("token")
+            if not token or not isinstance(token, str):
+                return "", None
+            expires_at = self._normalize_session_expiry(data.get("sessionExpiresAt"))
+            return token.strip(), expires_at
+        except Exception:
+            return "", None
+
+    def _persist_session_token(self) -> None:
+        token = (self.session_token or "").strip()
+        if not token:
+            return
+        path = self._session_store_path
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            payload: Dict[str, Any] = {"sessionToken": token}
+            if self._session_expires_at:
+                payload["sessionExpiresAt"] = self._session_expires_at
+            with path.open("w", encoding="utf-8") as handle:
+                json.dump(payload, handle, indent=2, sort_keys=True)
+            try:
+                os.chmod(path, 0o600)
+            except Exception:
+                pass
+        except Exception as exc:
+            logger.warning("Failed to persist session token: %s", exc)
+
+    def _delete_persisted_session_token(self) -> None:
+        path = self._session_store_path
+        try:
+            if path.exists():
+                path.unlink()
+        except Exception as exc:
+            logger.warning("Failed to delete persisted session token: %s", exc)
 
     def _has_any_auth_token(self) -> bool:
         """Check if any auth token is available for reconnect/auth."""

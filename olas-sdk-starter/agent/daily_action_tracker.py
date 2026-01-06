@@ -71,6 +71,11 @@ class DailyActionTracker:
             self.storage_path.parent.mkdir(parents=True, exist_ok=True)
             serialized = json.dumps(self._state, indent=2, sort_keys=True)
             self.storage_path.write_text(serialized)
+            logger.debug(
+                "Saved daily action tracker state: %d actions for epoch %s",
+                len(self._state.get("actions", [])),
+                self._state.get("epoch"),
+            )
         except Exception as exc:
             logger.warning("Failed to persist daily action tracker state: %s", exc)
 
@@ -81,6 +86,16 @@ class DailyActionTracker:
         if not action_name:
             return
         self._ensure_current_epoch()
+
+        before_count = len(self._state.get("actions", []))
+        logger.info(
+            "📝 Recording action %s: counter before=%d, epoch=%s, storage_path=%s",
+            action_name,
+            before_count,
+            self._state.get("epoch"),
+            self.storage_path,
+        )
+
         entry: Dict[str, Any] = {
             "name": action_name.upper(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -89,6 +104,15 @@ class DailyActionTracker:
             entry["metadata"] = metadata
         actions: List[Dict[str, Any]] = self._state.setdefault("actions", [])
         actions.append(entry)
+
+        after_count = len(self._state.get("actions", []))
+        logger.info(
+            "📝 Action %s recorded in memory: counter after=%d (delta=%d)",
+            action_name,
+            after_count,
+            after_count - before_count,
+        )
+
         self._save_state()
 
     def actions_completed(self) -> int:

@@ -109,6 +109,7 @@ class OlasInterface:
         self.app: Optional[web.Application] = None
         self.runner: Optional[web.AppRunner] = None
         self.site: Optional[web.TCPSite] = None
+        self.web_port: int = 8716  # Default port, updated when server starts
 
         # Environment variables (Olas SDK requirement)
         self.env_vars: Dict[str, str] = self._load_environment_variables()
@@ -1111,6 +1112,60 @@ class OlasInterface:
                 discovered_staking.get("chain_name"),
             )
 
+    @staticmethod
+    def _load_staking_config_from_operate() -> Optional[Dict[str, Any]]:
+        """Attempt to load staking configuration from .operate folder config.json files."""
+        operate_base = Path.home() / ".operate" / "services"
+        if not operate_base.exists():
+            return None
+
+        # Look for config.json files in service directories
+        config_files = list(operate_base.glob("*/config.json"))
+        if not config_files:
+            return None
+
+        # Try each config file until we find one with staking config
+        for config_path in config_files:
+            try:
+                with open(config_path, "r", encoding="utf-8") as f:
+                    config_data = json.load(f)
+
+                # Extract home_chain
+                home_chain = config_data.get("home_chain")
+                if not home_chain:
+                    continue
+
+                # Get chain_configs
+                chain_configs = config_data.get("chain_configs", {})
+                chain_config = chain_configs.get(home_chain)
+                if not chain_config:
+                    continue
+
+                # Extract chain_data and user_params
+                chain_data = chain_config.get("chain_data", {})
+                user_params = chain_data.get("user_params", {})
+
+                # Extract staking_program_id
+                staking_program_id = user_params.get("staking_program_id")
+                if not staking_program_id:
+                    continue
+
+                # Extract other values
+                agent_id = user_params.get("agent_id")
+                ledger_config = chain_config.get("ledger_config", {})
+                rpc_url = ledger_config.get("rpc")
+
+                return {
+                    "staking_program_id": staking_program_id,
+                    "service_id": agent_id,
+                    "chain_name": home_chain,
+                    "rpc_url": rpc_url,
+                }
+            except Exception:
+                continue
+
+        return None
+
     def _discover_staking_config(self) -> Optional[Dict[str, Any]]:
         """Attempt to infer staking configuration from environment variables."""
 
@@ -1160,6 +1215,8 @@ class OlasInterface:
             "STAKING_TOKEN_ADDRESS",
             "STAKING_TOKEN_PROXY_ADDRESS",
             "SERVICE_STAKING_TOKEN_ADDRESS",
+            "CONNECTION_CONFIGS_CONFIG_STAKING_CONTRACT_ADDRESS",
+            "STAKING_CONTRACT_ADDRESS",
             "SERVICE_STAKING_TOKEN_PROXY_ADDRESS",
         )
         safe_address = self._resolve_safe_address()
@@ -1180,6 +1237,87 @@ class OlasInterface:
                 "Staking configuration not provided via environment variables. Missing: %s",
                 ", ".join(missing_required),
             )
+            # Try to load from .operate folder config.json
+            operate_config = self._load_staking_config_from_operate()
+            if operate_config:
+                # Use values from operate config to fill in missing pieces
+                if not staking_program_id and operate_config.get("staking_program_id"):
+                    staking_program_id = operate_config["staking_program_id"]
+                if not chain_name and operate_config.get("chain_name"):
+                    chain_name = operate_config["chain_name"]
+                if not rpc_url and operate_config.get("rpc_url"):
+                    rpc_url = operate_config["rpc_url"]
+                if (
+                    service_id_value is None or service_id_value < 0
+                ) and operate_config.get("service_id") is not None:
+                    service_id_value = self._parse_int_like(
+                        operate_config["service_id"]
+                    )
+
+                # Check if we now have the required staking config
+                has_staking_target = bool(
+                    staking_contract_address
+                    or staking_program_id
+                    or staking_token_address
+                )
+                if (
+                    has_staking_target
+                    and service_id_value is not None
+                    and service_id_value >= 0
+                ):
+                    # We have enough config from .operate, continue processing
+                    if not staking_contract_address and staking_program_id:
+                        staking_contract_address = staking_program_id
+                    if not staking_token_address:
+                        staking_token_address = staking_contract_address
+                    elif not staking_contract_address:
+                        staking_contract_address = staking_token_address
+
+                    self.logger.info(
+                        "Loaded staking configuration from .operate config.json (service_id=%s, chain=%s)",
+                        service_id_value,
+                        chain_name or "unknown",
+                    )
+
+                    return {
+                        "source": "operate_config",
+                        "chain_name": chain_name,
+                        "rpc_url": rpc_url,
+                        "service_id": service_id_value,
+                        "safe_address": safe_address,
+                        "staking_program_id": staking_program_id,
+                        "staking_contract_address": staking_contract_address,
+                        "staking_token_address": staking_token_address,
+                    }
+
+            # If still not found, use default staking_program_id if available
+            if (
+                not staking_program_id
+                and not staking_contract_address
+                and not staking_token_address
+            ):
+                staking_program_id = DEFAULT_STAKING_CONTRACT_ADDRESS
+                if service_id_value is not None and service_id_value >= 0:
+                    staking_contract_address = staking_program_id
+                    staking_token_address = staking_contract_address
+
+                    self.logger.info(
+                        "Using default staking configuration (service_id=%s, chain=%s)",
+                        service_id_value,
+                        chain_name or "unknown",
+                    )
+
+                    return {
+                        "source": "default",
+                        "chain_name": chain_name,
+                        "rpc_url": rpc_url,
+                        "service_id": service_id_value,
+                        "safe_address": safe_address,
+                        "staking_program_id": staking_program_id,
+                        "staking_contract_address": staking_contract_address,
+                        "staking_token_address": staking_token_address,
+                    }
+
             return None
 
         if not staking_contract_address and staking_program_id:
@@ -1777,6 +1915,8 @@ class OlasInterface:
     ) -> None:
         """Start web server for health checks and UI (Olas SDK requirement)."""
         try:
+            # Store the actual port being used
+            self.web_port = port
             self.app = web.Application()
 
             # Try to build and serve React static files if enabled

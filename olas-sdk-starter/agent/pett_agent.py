@@ -3070,7 +3070,39 @@ class PettAgent:
                 "📊 Epoch change detected; on-chain recording re-enabled for new epoch"
             )
 
+        # Explicitly trigger daily UTC date reset check (ensures reset happens even during sleep)
+        # This calls _ensure_current_epoch() which resets the counter at midnight UTC
+        # Check epoch before reset to detect changes
+        epoch_before = self._daily_action_tracker.get_stored_epoch()
+
+        # This will trigger _ensure_current_epoch() if date changed
+        # The _ensure_current_epoch() method will log the reset if it happens
         actions_remaining = self._daily_action_tracker.actions_remaining()
+
+        # Get snapshot after reset check to see current state
+        snapshot = self._daily_action_tracker.snapshot()
+        epoch_after = snapshot.get("epoch")
+        completed = snapshot.get("completed", 0)
+        required = snapshot.get("required_actions", 0)
+
+        # Log if epoch changed (daily reset occurred) - additional confirmation
+        if epoch_before and epoch_before != epoch_after:
+            self.logger.info(
+                "🕐 Daily UTC date reset confirmed in decision loop: "
+                "epoch changed from %s to %s. Counter now at 0/%d",
+                epoch_before,
+                epoch_after,
+                required,
+            )
+
+        # Log current state for debugging
+        self.logger.debug(
+            "📊 Daily action tracker state: %d/%d completed, %d remaining, epoch=%s",
+            completed,
+            required,
+            actions_remaining,
+            epoch_after,
+        )
         recorder = self.olas.get_action_recorder()
         recorder_enabled = bool(recorder and recorder.is_enabled)
         try:

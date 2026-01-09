@@ -1011,19 +1011,24 @@ class OlasInterface:
                 break
 
         if not staking_address and discovered_staking:
-            staking_candidate = discovered_staking.get(
-                "staking_contract_address"
-            ) or discovered_staking.get("staking_program_id")
+
+            # DO NOT use staking_program_id as fallback for staking_contract_address
+            # They are distinct concepts - staking_program_id is not an Ethereum address
+            staking_candidate = discovered_staking.get("staking_contract_address")
             if staking_candidate:
                 staking_address = staking_candidate
                 used_discovered_config = True
+            elif discovered_staking.get("staking_program_id"):
+                self.logger.warning(
+                    "Found staking_program_id in discovered config but not staking_contract_address. "
+                    "Cannot use staking_program_id as contract address - checkpoint operations may fail."
+                )
 
         if not staking_address:
-            staking_address = DEFAULT_STAKING_CONTRACT_ADDRESS
-            self.logger.info(
-                "Staking contract address not configured; defaulting to %s",
-                staking_address,
+            self.logger.error(
+                "Staking contract address not configured. Cannot proceed with staking checkpoint initialization. "
             )
+            return
 
         safe_address: Optional[str] = None
         safe_env_candidates = (
@@ -1112,8 +1117,7 @@ class OlasInterface:
                 discovered_staking.get("chain_name"),
             )
 
-    @staticmethod
-    def _load_staking_config_from_operate() -> Optional[Dict[str, Any]]:
+    def _load_staking_config_from_operate(self) -> Optional[Dict[str, Any]]:
         """Attempt to load staking configuration from .operate folder config.json files."""
         operate_base = Path.home() / ".operate" / "services"
         if not operate_base.exists():
@@ -1123,6 +1127,14 @@ class OlasInterface:
         config_files = list(operate_base.glob("*/config.json"))
         if not config_files:
             return None
+
+        # IMPORTANTE @edu: Fuck me don't try to change this again. When i think its worth changing it ITS not,
+        # it never passes QA from the OLAS folks. So don't even try to change it cc @edu
+
+        # Sort config files to ensure deterministic selection order
+        # DO NOT make this non-deterministic - sorting ensures consistent behavior
+        # when multiple services exist, preventing the agent from binding to the wrong service
+        config_files = sorted(config_files)
 
         # Try each config file until we find one with staking config
         for config_path in config_files:
@@ -1161,7 +1173,13 @@ class OlasInterface:
                     "chain_name": home_chain,
                     "rpc_url": rpc_url,
                 }
-            except Exception:
+            except Exception as exc:
+                self.logger.warning(
+                    "Failed to load staking config from %s: %s",
+                    config_path,
+                    exc,
+                    exc_info=True,
+                )
                 continue
 
         return None
@@ -1255,6 +1273,8 @@ class OlasInterface:
                     )
 
                 # Check if we now have the required staking config
+                # DO NOT conflate staking_program_id, staking_contract_address, and staking_token_address
+                # They are distinct concepts and should not be used as fallbacks for each other
                 has_staking_target = bool(
                     staking_contract_address
                     or staking_program_id
@@ -1265,13 +1285,14 @@ class OlasInterface:
                     and service_id_value is not None
                     and service_id_value >= 0
                 ):
-                    # We have enough config from .operate, continue processing
-                    if not staking_contract_address and staking_program_id:
-                        staking_contract_address = staking_program_id
-                    if not staking_token_address:
-                        staking_token_address = staking_contract_address
-                    elif not staking_contract_address:
-                        staking_contract_address = staking_token_address
+                    # Warn if staking_contract_address is missing (required for checkpoint operations)
+                    if not staking_contract_address:
+                        self.logger.warning(
+                            "staking_contract_address not found in operate config. "
+                            "Checkpoint operations may fail. staking_program_id=%s, staking_token_address=%s",
+                            staking_program_id or "None",
+                            staking_token_address or "None",
+                        )
 
                     self.logger.info(
                         "Loaded staking configuration from .operate config.json (service_id=%s, chain=%s)",
@@ -1290,42 +1311,42 @@ class OlasInterface:
                         "staking_token_address": staking_token_address,
                     }
 
-            # If still not found, use default staking_program_id if available
+            # If still not found, use default staking_contract_address if available
+            # DO NOT conflate staking_program_id with staking_contract_address
+            # DEFAULT_STAKING_CONTRACT_ADDRESS is a contract address, not a program ID
             if (
                 not staking_program_id
                 and not staking_contract_address
                 and not staking_token_address
             ):
-                staking_program_id = DEFAULT_STAKING_CONTRACT_ADDRESS
                 if service_id_value is not None and service_id_value >= 0:
-                    staking_contract_address = staking_program_id
-                    staking_token_address = staking_contract_address
-
-                    self.logger.info(
-                        "Using default staking configuration (service_id=%s, chain=%s)",
+                    # Refuse to use default contract address for security reasons
+                    # This prevents accidental staking against unintended contracts
+                    self.logger.error(
+                        "Staking contract address not found in configuration. "
+                        "Cannot use default address for security reasons. "
+                        "Please configure STAKING_CONTRACT_ADDRESS or related environment variables. "
+                        "(service_id=%s, chain=%s)",
                         service_id_value,
                         chain_name or "unknown",
                     )
-
-                    return {
-                        "source": "default",
-                        "chain_name": chain_name,
-                        "rpc_url": rpc_url,
-                        "service_id": service_id_value,
-                        "safe_address": safe_address,
-                        "staking_program_id": staking_program_id,
-                        "staking_contract_address": staking_contract_address,
-                        "staking_token_address": staking_token_address,
-                    }
+                    return None
 
             return None
 
-        if not staking_contract_address and staking_program_id:
-            staking_contract_address = staking_program_id
-        if not staking_token_address:
-            staking_token_address = staking_contract_address
-        elif not staking_contract_address:
-            staking_contract_address = staking_token_address
+        # DO NOT conflate staking_program_id, staking_contract_address, and staking_token_address
+        # They are distinct concepts:
+        # - staking_program_id: A program/service identifier (not an Ethereum address)
+        # - staking_contract_address: An Ethereum contract address for the staking contract
+        # - staking_token_address: An Ethereum contract address for the staking token
+        # Using one as a fallback for another can lead to invalid addresses and broken functionality
+        if not staking_contract_address:
+            self.logger.warning(
+                "staking_contract_address not provided. Checkpoint operations may fail. "
+                "staking_program_id=%s, staking_token_address=%s",
+                staking_program_id or "None",
+                staking_token_address or "None",
+            )
 
         self.logger.info(
             "Loaded staking configuration from environment (service_id=%s, chain=%s)",

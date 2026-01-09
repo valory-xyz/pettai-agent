@@ -5,6 +5,8 @@ import os
 import platform
 import random
 import ssl
+import stat
+import time
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
@@ -118,6 +120,7 @@ class PettWebSocketClient:
         if not self.session_token:
             stored_token, stored_expiry = self._load_persisted_session_token()
             if stored_token:
+                # _load_persisted_session_token already checks expiry and clears expired tokens
                 self.session_token = stored_token
                 self._session_expires_at = stored_expiry
         self._ssl_context = self._build_ssl_context()
@@ -478,8 +481,16 @@ class PettWebSocketClient:
             )
             self.clear_session_token()
             return
+        normalized_expiry = self._normalize_session_expiry(expires_at)
+        # Check if the token is already expired before setting it
+        if self._is_session_expired(normalized_expiry):
+            logger.warning(
+                "⚠️ Attempted to set an expired session token - session auth will be disabled"
+            )
+            self.clear_session_token()
+            return
         self.session_token = token
-        self._session_expires_at = self._normalize_session_expiry(expires_at)
+        self._session_expires_at = normalized_expiry
         self._last_auth_error = None
         self._persist_session_token()
 
@@ -542,6 +553,19 @@ class PettWebSocketClient:
             return expiry * 1000
         return expiry
 
+    def _is_session_expired(self, expires_at: Optional[int]) -> bool:
+        """Check if a session token has expired based on its expiry timestamp."""
+        if expires_at is None:
+            return False  # No expiry info means we can't determine if expired
+        try:
+            # Convert expiry (milliseconds) to seconds for comparison
+            expiry_seconds = expires_at / 1000.0
+            current_seconds = time.time()
+            return current_seconds >= expiry_seconds
+        except (TypeError, ValueError):
+            # Invalid expiry format - treat as expired to be safe
+            return True
+
     def _resolve_session_store_path(self) -> Path:
         env_candidates = (
             "CONNECTION_CONFIGS_CONFIG_STORE_PATH",
@@ -567,6 +591,11 @@ class PettWebSocketClient:
             if not token or not isinstance(token, str):
                 return "", None
             expires_at = self._normalize_session_expiry(data.get("sessionExpiresAt"))
+            # Check if the token has expired and clear it if so
+            if self._is_session_expired(expires_at):
+                logger.info("Session token expired, clearing persisted token")
+                self._delete_persisted_session_token()
+                return "", None
             return token.strip(), expires_at
         except Exception:
             return "", None
@@ -583,10 +612,24 @@ class PettWebSocketClient:
                 payload["sessionExpiresAt"] = self._session_expires_at
             with path.open("w", encoding="utf-8") as handle:
                 json.dump(payload, handle, indent=2, sort_keys=True)
-            try:
-                os.chmod(path, 0o600)
-            except Exception:
-                pass
+            # Set restrictive permissions (owner read/write only)
+            # Note: Windows doesn't support Unix-style permissions, so this may not work there
+            if platform.system() != "Windows":
+                try:
+                    os.chmod(path, 0o600)
+                    # Verify permissions were actually set
+                    file_stat = os.stat(path)
+                    current_mode = stat.filemode(file_stat.st_mode)
+                    if current_mode != "-rw-------":
+                        logger.warning(
+                            "Session token file permissions not properly restricted: %s (expected -rw-------)",
+                            current_mode,
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to set restrictive permissions on session token file: %s",
+                        exc,
+                    )
         except Exception as exc:
             logger.warning("Failed to persist session token: %s", exc)
 
@@ -615,17 +658,21 @@ class PettWebSocketClient:
                     return
             candidates.append((auth_type, cleaned, label))
 
+        # Check and clear expired session token before building candidates
+        if self.session_token and self._is_session_expired(self._session_expires_at):
+            logger.info("Session token expired, clearing it")
+            self.clear_session_token()
+
         saved_type = (self._saved_auth_type or "").strip().lower()
         if self._saved_auth_token and saved_type == "session":
+            # Note: We don't have expiry info for saved tokens, but they'll fail on auth if expired
             add_candidate("session", self._saved_auth_token, "saved")
 
         if self.session_token:
             add_candidate("session", self.session_token, "session")
 
-        # If we have a session token, only use session auth for reconnects.
-        if candidates:
-            return candidates
-
+        # Always include Privy tokens as fallback, even when session tokens exist.
+        # This allows recovery from expired/revoked session tokens.
         if self._saved_auth_token and saved_type == "privy":
             add_candidate("privy", self._saved_auth_token, "saved")
         elif self._saved_auth_token and not saved_type:
@@ -652,11 +699,65 @@ class PettWebSocketClient:
         )
 
     def _is_session_token_invalid(self, error_text: str) -> bool:
-        """Check if the error string indicates an invalid/expired session token."""
-        lowered = (error_text or "").lower()
-        if "session token" not in lowered:
+        """Check if the error string indicates an invalid/expired session token.
+
+        Uses flexible pattern matching to detect various authentication failure
+        messages that may indicate session token issues, without requiring
+        specific substring matches. This improves resilience to backend message changes.
+        """
+        if not error_text:
             return False
-        return "invalid" in lowered or "expired" in lowered
+
+        lowered = error_text.lower()
+
+        # Direct session token error indicators
+        session_indicators = (
+            "session token",
+            "session_token",
+            "session invalid",
+            "session expired",
+            "session authentication",
+        )
+
+        # Generic authentication failure indicators (when using session auth)
+        auth_failure_indicators = (
+            "unauthorized",
+            "authentication failed",
+            "auth failed",
+            "invalid token",
+            "token invalid",
+            "token expired",
+            "expired token",
+            "invalid authentication",
+            "authentication error",
+            "401",  # HTTP 401 Unauthorized
+        )
+
+        # Check for session-specific errors
+        has_session_indicator = any(
+            indicator in lowered for indicator in session_indicators
+        )
+        if has_session_indicator:
+            # If session-related, check for failure keywords
+            failure_keywords = ("invalid", "expired", "failed", "error", "unauthorized")
+            return any(keyword in lowered for keyword in failure_keywords)
+
+        # Check for generic auth failures (when we know we're using session auth)
+        # This catches cases like "Unauthorized" or "Invalid token" without "session" in the message
+        has_auth_failure = any(
+            indicator in lowered for indicator in auth_failure_indicators
+        )
+        if has_auth_failure:
+            # Additional validation: exclude non-auth errors that might match
+            excluded_patterns = (
+                "rate limit",  # Rate limiting is not an auth failure
+                "too many requests",  # Rate limiting
+                "permission denied",  # Different from auth failure
+            )
+            # Only consider it a session error if it's not an excluded pattern
+            return not any(excluded in lowered for excluded in excluded_patterns)
+
+        return False
 
     async def authenticate(self, timeout: int = 10) -> bool:
         """Default authentication using available tokens with timeout.
@@ -891,7 +992,10 @@ class PettWebSocketClient:
 
                     error_text = (self._last_auth_error or "").lower()
 
-                    if self._was_previously_authenticated and token == self._saved_auth_token:
+                    if (
+                        self._was_previously_authenticated
+                        and token == self._saved_auth_token
+                    ):
                         logger.warning(
                             "🔑 Saved auth token failed, clearing saved state"
                         )
@@ -1420,9 +1524,7 @@ class PettWebSocketClient:
             # Save auth token for reconnection use
             if session_token:
                 session_token_str = str(session_token).strip()
-                self.set_session_token(
-                    session_token_str, expires_at=session_expires_at
-                )
+                self.set_session_token(session_token_str, expires_at=session_expires_at)
                 self._saved_auth_token = self.session_token
                 self._saved_auth_type = "session"
             elif self._pending_auth_token and self._pending_auth_type:
@@ -1502,8 +1604,9 @@ class PettWebSocketClient:
                 )
                 logger.error(self.get_token_refresh_instructions())
                 logger.critical("💀 JWT token expired - waiting for refresh.")
-            elif self._pending_auth_type == "session" and self._is_session_token_invalid(
-                error_text
+            elif (
+                self._pending_auth_type == "session"
+                and self._is_session_token_invalid(error_text)
             ):
                 logger.error(
                     "🔑 Session token is invalid or expired. Please re-login via the UI Privy flow to mint a new session token."

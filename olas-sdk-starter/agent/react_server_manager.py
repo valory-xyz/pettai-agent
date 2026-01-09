@@ -254,23 +254,60 @@ class ReactServerManager:
             result = s.connect_ex(("127.0.0.1", port))
             return result == 0
 
+    def _try_bind_port(self, port: int) -> Optional[socket.socket]:
+        """Atomically attempt to bind to a port. Returns bound socket if successful, None otherwise."""
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            s.bind(("127.0.0.1", port))
+            s.listen(128)  # Put socket in listen state to fully reserve the port
+            return s
+        except OSError:
+            # Port is in use or bind failed
+            return None
+
     def _select_available_port(self, preferred: int) -> int:
-        """Pick an available port, preferring the given one; fallback to 8716 then scan upward."""
-        # If preferred is free, use it
-        if not self._port_is_in_use(preferred):
-            return preferred
+        """Pick an available port, preferring the given one; if occupied, scan upward for next available.
 
-        # Prefer 8716 (project default) if not the preferred
-        if preferred != 8716 and not self._port_is_in_use(8716):
-            return 8716
+        Uses atomic binding to avoid TOCTOU race conditions - ports are reserved by binding
+        rather than just checking availability.
+        """
+        # Try to atomically bind to the preferred port
+        bound_socket = self._try_bind_port(preferred)
+        if bound_socket is not None:
+            port = preferred
+            bound_socket.close()  # Close immediately - minimal race window before React server starts
+            logger.info(f"✅ Using available port {port}")
+            return port
 
-        # Scan a small range for an open port
-        start = 8716 if preferred == 8716 else max(preferred, 3000)
+        # Preferred port is occupied, scan upward starting from the next port
+        logger.info(
+            f"🔍 Port {preferred} is occupied, scanning for next available port..."
+        )
+        start = preferred + 1
+        # Ensure we don't go below a reasonable minimum
+        if start < 3000:
+            start = 3000
+
+        # Scan a range for an open port (check up to 200 ports ahead)
+        # Use atomic binding instead of checking first
         for candidate in range(start, start + 200):
-            if not self._port_is_in_use(candidate):
-                return candidate
+            bound_socket = self._try_bind_port(candidate)
+            if bound_socket is not None:
+                port = candidate
+                bound_socket.close()  # Close immediately - minimal race window before React server starts
+                logger.info(f"✅ Using available port {port}")
+                return port
 
         # Fallback to an ephemeral port assigned by OS if everything else fails
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.bind(("127.0.0.1", 0))
-            return s.getsockname()[1]
+        logger.warning(
+            f"⚠️ No port found in range {start}-{start + 199}, using OS-assigned ephemeral port"
+        )
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.1", 0))
+        s.listen(128)
+        ephemeral_port = s.getsockname()[1]
+        s.close()  # Close immediately - minimal race window before React server starts
+        logger.info(f"✅ Using available port {ephemeral_port}")
+        return ephemeral_port

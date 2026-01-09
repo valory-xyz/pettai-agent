@@ -10,8 +10,6 @@ from datetime import datetime, timedelta
 from enum import Enum, auto
 from typing import (
     Any,
-    Awaitable,
-    Callable,
     Dict,
     List,
     Optional,
@@ -782,15 +780,18 @@ class PetDecisionMaker:
         """Attempt to recover happiness."""
         stats = context.stats
 
-        # Prefer throwball (earns tokens)
-        can_throwball, reason = ActionConditions.can_throwball(stats)
-        if can_throwball:
-            return ActionDecision(
-                action=ActionType.THROWBALL,
-                reason=f"Low happiness ({stats.happiness:.1f}) - throwing ball",
-                should_record_onchain=should_record,
-                stats_snapshot=stats.to_dict(),
-            )
+        # Prefer throwball (earns tokens) unless it's been recently blocked
+        if not self.is_action_blocked(ActionType.THROWBALL):
+            can_throwball, reason = ActionConditions.can_throwball(stats)
+            if can_throwball:
+                return ActionDecision(
+                    action=ActionType.THROWBALL,
+                    reason=f"Low happiness ({stats.happiness:.1f}) - throwing ball",
+                    should_record_onchain=should_record,
+                    stats_snapshot=stats.to_dict(),
+                )
+        else:
+            self.logger.debug("🔁 Skipping THROWBALL - action blocked by recent failure")
 
         # Fallback to rub
         can_rub, reason = ActionConditions.can_rub(stats)
@@ -817,15 +818,18 @@ class PetDecisionMaker:
         """Perform maintenance action when all stats are acceptable."""
         stats = context.stats
 
-        # Prefer throwball (earns tokens and we need actions)
-        can_throwball, reason = ActionConditions.can_throwball(stats)
-        if can_throwball:
-            return ActionDecision(
-                action=ActionType.THROWBALL,
-                reason=f"Maintenance: throwing ball to earn tokens ({reason})",
-                should_record_onchain=should_record,
-                stats_snapshot=stats.to_dict(),
-            )
+        # Prefer throwball (earns tokens and we need actions) unless blocked
+        if not self.is_action_blocked(ActionType.THROWBALL):
+            can_throwball, reason = ActionConditions.can_throwball(stats)
+            if can_throwball:
+                return ActionDecision(
+                    action=ActionType.THROWBALL,
+                    reason=f"Maintenance: throwing ball to earn tokens ({reason})",
+                    should_record_onchain=should_record,
+                    stats_snapshot=stats.to_dict(),
+                )
+        else:
+            self.logger.debug("🔁 Skipping maintenance THROWBALL - blocked by recent failure")
 
         # Try shower
         can_shower, reason = ActionConditions.can_shower(stats)

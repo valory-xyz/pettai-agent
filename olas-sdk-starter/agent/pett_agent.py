@@ -173,14 +173,17 @@ class PettAgent:
         """Return a callback for recording successful on-chain actions.
 
         This callback is called only when an on-chain action recording
-        actually succeeds. Note: The action is already recorded in the daily
-        tracker when it succeeds (regardless of on-chain status), so this
-        callback primarily serves to log the on-chain verification status.
+        actually succeeds. The staking counter is incremented here to ensure
+        only verified on-chain transactions count toward the staking threshold.
         """
 
         def record_success(action_name: str) -> None:
-            # Action is already recorded in _execute_action_with_tracking when it succeeds,
-            # so we don't need to record it again here. Just log the on-chain verification.
+            # Increment the staking counter only when on-chain recording succeeds
+            self.logger.debug(
+                "🎯 On-chain success callback fired for %s, recording in staking counter",
+                action_name,
+            )
+            self._daily_action_tracker.record_action(action_name)
             completed = self._daily_action_tracker.actions_completed()
             remaining = self._daily_action_tracker.actions_remaining()
             self.logger.info(
@@ -192,6 +195,14 @@ class PettAgent:
             )
 
         return record_success
+
+    def _get_web_port(self) -> int:
+        """Get the actual web server port, checking ReactServerManager first if available, then OlasInterface."""
+        # Check if ReactServerManager is being used (for dev mode)
+        if hasattr(self, "react_server_manager") and self.react_server_manager:
+            return self.react_server_manager.port
+        # Fallback to OlasInterface web port
+        return getattr(self.olas, "web_port", 8716)
 
     # TypedDicts for pet data shape
     class PetTokensDict(TypedDict, total=False):
@@ -437,8 +448,10 @@ class PettAgent:
                     self.logger.info(
                         "⏸️  Environment token authentication failed (expired or invalid)"
                     )
+                    port = self._get_web_port()
                     self.logger.info(
-                        "✨ Waiting for user to login via React app at http://localhost:8716/ (also available via http://127.0.0.1:8716/)"
+                        f"✨ Waiting for user to login via React app at "
+                        f"http://localhost:{port}/ (also available via http://127.0.0.1:{port}/)"
                     )
                     self.olas.update_websocket_status(
                         connected=False, authenticated=False
@@ -447,8 +460,10 @@ class PettAgent:
                     self.waiting_for_react_login = True
             else:
                 self.logger.info("ℹ️  No PRIVY_TOKEN in environment")
+                port = self._get_web_port()
                 self.logger.info(
-                    "✨ Waiting for user to login via React app at http://localhost:8716/ (also available via http://127.0.0.1:8716/)"
+                    f"✨ Waiting for user to login via React app at "
+                    f"http://localhost:{port}/ (also available via http://127.0.0.1:{port}/)"
                 )
                 # Initialize WebSocket client for later use
                 self.websocket_client = PettWebSocketClient(
@@ -2822,16 +2837,15 @@ class PettAgent:
 
         # Note: on-chain counter increment happens in websocket client's _onchain_success_recorder
         # Only successful on-chain recordings count toward the staking threshold.
-        # However, we still want to track ALL successful actions for the UI action history,
-        # even if on-chain recording was skipped or failed.
+        # When on-chain recording is skipped, we still want to count it for the staking threshold
+        # (to avoid blocking the agent when on-chain recording is disabled).
         if success:
-            # Always record successful actions for UI action history
-            # (on-chain recording may succeed later via _onchain_success_recorder callback,
-            # but we want to show the action in UI even if on-chain recording fails or is skipped)
-            self._daily_action_tracker.record_action(normalized_name)
+            # Record actions where on-chain recording was skipped (so they still count toward staking)
+            # For actions with on-chain recording, the _onchain_success_recorder callback will record them
             if skipped_onchain_recording:
+                self._daily_action_tracker.record_action(normalized_name)
                 self.logger.debug(
-                    "📝 Recorded %s in action history (on-chain recording skipped)",
+                    "📝 Recorded %s in staking counter (on-chain recording skipped)",
                     normalized_name,
                 )
 
@@ -3056,7 +3070,39 @@ class PettAgent:
                 "📊 Epoch change detected; on-chain recording re-enabled for new epoch"
             )
 
+        # Explicitly trigger daily UTC date reset check (ensures reset happens even during sleep)
+        # This calls _ensure_current_epoch() which resets the counter at midnight UTC
+        # Check epoch before reset to detect changes
+        epoch_before = self._daily_action_tracker.get_stored_epoch()
+
+        # This will trigger _ensure_current_epoch() if date changed
+        # The _ensure_current_epoch() method will log the reset if it happens
         actions_remaining = self._daily_action_tracker.actions_remaining()
+
+        # Get snapshot after reset check to see current state
+        snapshot = self._daily_action_tracker.snapshot()
+        epoch_after = snapshot.get("epoch")
+        completed = snapshot.get("completed", 0)
+        required = snapshot.get("required_actions", 0)
+
+        # Log if epoch changed (daily reset occurred) - additional confirmation
+        if epoch_before and epoch_before != epoch_after:
+            self.logger.info(
+                "🕐 Daily UTC date reset confirmed in decision loop: "
+                "epoch changed from %s to %s. Counter now at 0/%d",
+                epoch_before,
+                epoch_after,
+                required,
+            )
+
+        # Log current state for debugging
+        self.logger.debug(
+            "📊 Daily action tracker state: %d/%d completed, %d remaining, epoch=%s",
+            completed,
+            required,
+            actions_remaining,
+            epoch_after,
+        )
         recorder = self.olas.get_action_recorder()
         recorder_enabled = bool(recorder and recorder.is_enabled)
         try:
@@ -3407,7 +3453,8 @@ class PettAgent:
         self.running = True
         self.logger.info("🎯 Pett Agent is now running...")
         self.logger.info(
-            "Waiting the user to enter http://localhost:8716/ (or http://127.0.0.1:8716/) to log in and start running successfully the agent"
+            f"Waiting the user to enter http://localhost:{self._get_web_port()}/ "
+            f"(or http://127.0.0.1:{self._get_web_port()}/) to log in and start running successfully the agent"
         )
 
         try:

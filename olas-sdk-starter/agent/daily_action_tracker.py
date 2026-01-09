@@ -39,11 +39,33 @@ class DailyActionTracker:
 
     def _ensure_current_epoch(self) -> None:
         """Reset tracked actions when a new day/epoch begins."""
-        epoch = self._current_epoch()
-        if self._state.get("epoch") == epoch:
+        current_epoch = self._current_epoch()
+        stored_epoch = self._state.get("epoch")
+        
+        if stored_epoch == current_epoch:
+            # Same epoch, no reset needed
             return
-        self._state = {"epoch": epoch, "actions": []}
+        
+        # Epoch changed - reset the counter
+        prev_count = len(self._state.get("actions", []))
+        prev_epoch = stored_epoch or "unknown"
+        
+        logger.info(
+            "🔄 Daily reset triggered: epoch changed from %s to %s (UTC). "
+            "Resetting action counter from %d to 0",
+            prev_epoch,
+            current_epoch,
+            prev_count,
+        )
+        
+        self._state = {"epoch": current_epoch, "actions": []}
         self._save_state()
+        
+        logger.info(
+            "✅ Daily reset completed: new epoch=%s, counter reset to 0/%d",
+            current_epoch,
+            self.required_actions,
+        )
 
     def _load_state(self) -> None:
         """Load persisted action history if it matches the current epoch."""
@@ -71,6 +93,11 @@ class DailyActionTracker:
             self.storage_path.parent.mkdir(parents=True, exist_ok=True)
             serialized = json.dumps(self._state, indent=2, sort_keys=True)
             self.storage_path.write_text(serialized)
+            logger.debug(
+                "Saved daily action tracker state: %d actions for epoch %s",
+                len(self._state.get("actions", [])),
+                self._state.get("epoch"),
+            )
         except Exception as exc:
             logger.warning("Failed to persist daily action tracker state: %s", exc)
 
@@ -81,6 +108,16 @@ class DailyActionTracker:
         if not action_name:
             return
         self._ensure_current_epoch()
+
+        before_count = len(self._state.get("actions", []))
+        logger.info(
+            "📝 Recording action %s: counter before=%d, epoch=%s, storage_path=%s",
+            action_name,
+            before_count,
+            self._state.get("epoch"),
+            self.storage_path,
+        )
+
         entry: Dict[str, Any] = {
             "name": action_name.upper(),
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -89,6 +126,15 @@ class DailyActionTracker:
             entry["metadata"] = metadata
         actions: List[Dict[str, Any]] = self._state.setdefault("actions", [])
         actions.append(entry)
+
+        after_count = len(self._state.get("actions", []))
+        logger.info(
+            "📝 Action %s recorded in memory: counter after=%d (delta=%d)",
+            action_name,
+            after_count,
+            after_count - before_count,
+        )
+
         self._save_state()
 
     def actions_completed(self) -> int:
@@ -122,6 +168,14 @@ class DailyActionTracker:
         )
         self._state = {"epoch": new_epoch, "actions": []}
         self._save_state()
+
+    def get_current_epoch(self) -> str:
+        """Return the current UTC day identifier used for action epochs."""
+        return self._current_epoch()
+
+    def get_stored_epoch(self) -> Optional[str]:
+        """Return the stored epoch identifier (before any reset check)."""
+        return self._state.get("epoch")
 
     def snapshot(self) -> Dict[str, Any]:
         """Return a shallow copy of the current state for telemetry."""

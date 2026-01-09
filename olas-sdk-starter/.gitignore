@@ -7,6 +7,9 @@ do_creds
 # Pett WebSocket CA bundle injected during builds
 agent/certs/*.pem
 
+# Local auth/session token cache
+persistent_data/pett_session_token.json
+
 # .tfstate files
 *.tfstate
 *.tfstate.*
@@ -432,3 +435,7 @@ agent/log.txt
 *.b64
 
 tests/__pycache__/
+
+agent_*/
+upload_*/
+swap_*.py

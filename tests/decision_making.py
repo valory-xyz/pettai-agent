@@ -1915,6 +1915,30 @@ class TestFailedActionLoopPrevention:
                 ActionType.CONSUMABLES_BUY,
             )
 
+    def test_throwball_blocked_by_failure_uses_rub(self, decision_maker: PetDecisionMaker):
+        """Ensure THROWBALL is skipped after a failure so another action runs."""
+        context = create_context(
+            hunger=50,
+            health=50,
+            energy=50,
+            happiness=10,  # Low happiness triggers throwball
+            hygiene=50,  # Allows RUB fallback
+            owned_consumables=[],
+            actions_recorded=0,
+        )
+
+        first_decision = decision_maker.decide(context)
+        assert first_decision.action == ActionType.THROWBALL
+
+        decision_maker.record_action_failure(
+            action=ActionType.THROWBALL,
+            params={},
+            reason="Not enough health to play",
+        )
+
+        second_decision = decision_maker.decide(context)
+        assert second_decision.action == ActionType.RUB
+        assert "Low happiness" in second_decision.reason
 
 class TestFailedActionDataclass:
     """Tests for the FailedAction dataclass."""

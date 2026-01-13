@@ -1,4 +1,6 @@
 import asyncio
+import base64
+import hashlib
 import json
 import logging
 import os
@@ -12,6 +14,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 import certifi
 import websockets
+from cryptography.fernet import Fernet, InvalidToken
 from dotenv import load_dotenv
 
 from .action_recorder import ActionRecorder
@@ -69,6 +72,7 @@ class PettWebSocketClient:
         ),
         privy_token: Optional[str] = None,
         session_token: Optional[str] = None,
+        encryption_password: Optional[str] = None,
     ):
         self.websocket_url = websocket_url
         self.websocket: Optional[Any] = None
@@ -80,6 +84,10 @@ class PettWebSocketClient:
         self.session_token = (
             session_token or os.getenv("PETT_SESSION_TOKEN") or ""
         ).strip()
+        # Password for encrypting/decrypting session tokens
+        self._encryption_password = encryption_password or os.getenv(
+            "SESSION_TOKEN_PASSWORD"
+        )
         self.data_message: Optional[Dict[str, Any]] = None
         self.ai_search_future: Optional[asyncio.Future[str]] = None
         self.kitchen_future: Optional[asyncio.Future[str]] = None
@@ -139,6 +147,77 @@ class PettWebSocketClient:
         """Attach the action recorder used for on-chain reporting."""
         self._action_recorder = recorder
 
+    def _get_action_recorder_diagnostics(self) -> Dict[str, Any]:
+        """Get diagnostic information about why the action recorder might be disabled."""
+        if not self._action_recorder:
+            return {
+                "recorder_exists": False,
+                "reason": "action recorder not configured (recorder is None)",
+                "missing_vars": [],
+            }
+
+        missing = []
+        # Check if recorder is enabled
+        if not self._action_recorder.is_enabled:
+            # Check what's missing by inspecting the recorder's internal state
+            try:
+                if hasattr(self._action_recorder, "_config"):
+                    config = self._action_recorder._config
+                    if not (getattr(config, "private_key", "") or "").strip():
+                        missing.append("private_key")
+                    if not (getattr(config, "rpc_url", "") or "").strip():
+                        missing.append("rpc_url")
+                    if not (getattr(config, "contract_address", "") or "").strip():
+                        missing.append("contract_address")
+            except Exception:
+                pass  # If we can't access config, continue with other checks
+
+            # Check internal state
+            try:
+                if (
+                    hasattr(self._action_recorder, "_w3")
+                    and self._action_recorder._w3 is None
+                ):
+                    missing.append("Web3 provider not initialized")
+                if (
+                    hasattr(self._action_recorder, "_contract")
+                    and self._action_recorder._contract is None
+                ):
+                    missing.append("contract not initialized")
+                if (
+                    hasattr(self._action_recorder, "_account")
+                    and self._action_recorder._account is None
+                ):
+                    missing.append("account not initialized")
+            except Exception:
+                pass  # If we can't access internal state, continue
+
+            # Also check public properties
+            if not self._action_recorder.rpc_url:
+                if "rpc_url" not in missing:
+                    missing.append("rpc_url")
+            if not self._action_recorder.contract_address:
+                if "contract_address" not in missing:
+                    missing.append("contract_address")
+
+            reason = (
+                f"action recorder disabled: missing or invalid {', '.join(missing)}"
+                if missing
+                else "action recorder disabled (unknown reason)"
+            )
+        else:
+            reason = None
+
+        return {
+            "recorder_exists": True,
+            "recorder_enabled": self._action_recorder.is_enabled,
+            "missing_vars": missing if not self._action_recorder.is_enabled else [],
+            "reason": reason,
+            "account_address": self._action_recorder.account_address,
+            "contract_address": self._action_recorder.contract_address,
+            "rpc_url": self._action_recorder.rpc_url,
+        }
+
     def set_onchain_recording_enabled(self, enabled: bool) -> None:
         """Globally enable/disable on-chain recordAction submissions."""
         self._onchain_recording_enabled = bool(enabled)
@@ -189,14 +268,19 @@ class PettWebSocketClient:
             return
         if not self._action_recorder:
             logger.info(
-                "🧾 Skipping on-chain record for %s: action recorder not configured",
+                "🧾 Skipping on-chain record for %s: action recorder not configured (recorder is None)",
                 action_type,
             )
             return
         if not self._action_recorder.is_enabled:
+            diag = self._get_action_recorder_diagnostics()
+            reason = diag.get("reason", "action recorder disabled (unknown reason)")
+            missing_vars = diag.get("missing_vars", [])
             logger.info(
-                "🧾 Skipping on-chain record for %s: action recorder disabled (missing key/RPC)",
+                "🧾 Skipping on-chain record for %s: %s (missing variables: %s)",
                 action_type,
+                reason,
+                ", ".join(missing_vars) if missing_vars else "none identified",
             )
             return
 
@@ -259,14 +343,19 @@ class PettWebSocketClient:
         # Proceed with recording
         if not self._action_recorder:
             logger.info(
-                "🧾 Skipping on-chain record for %s: action recorder not configured",
+                "🧾 Skipping on-chain record for %s: action recorder not configured (recorder is None)",
                 action_type,
             )
             return
         if not self._action_recorder.is_enabled:
+            diag = self._get_action_recorder_diagnostics()
+            reason = diag.get("reason", "action recorder disabled (unknown reason)")
+            missing_vars = diag.get("missing_vars", [])
             logger.info(
-                "🧾 Skipping on-chain record for %s: action recorder disabled (missing key/RPC)",
+                "🧾 Skipping on-chain record for %s: %s (missing variables: %s)",
                 action_type,
+                reason,
+                ", ".join(missing_vars) if missing_vars else "none identified",
             )
             return
 
@@ -578,6 +667,91 @@ class PettWebSocketClient:
                 return Path(value).expanduser() / "pett_session_token.json"
         return Path("./persistent_data") / "pett_session_token.json"
 
+    def _get_encryption_key(self) -> Optional[bytes]:
+        """
+        Derive encryption key from password.
+
+        Uses PBKDF2 to derive a key from the provided password (similar to how
+        the ethereum private key is encrypted). If no password is provided,
+        returns None and tokens will be stored in plaintext.
+
+        Returns:
+            32-byte encryption key suitable for Fernet, or None if no password
+        """
+        if not self._encryption_password:
+            return None
+
+        # Derive key using PBKDF2 (same approach as eth keystore)
+        derived_key = hashlib.pbkdf2_hmac(
+            "sha256",
+            self._encryption_password.encode("utf-8"),
+            b"pett-session-encryption-salt",
+            iterations=100000,
+            dklen=32,
+        )
+
+        # Fernet requires base64-encoded key
+        return base64.urlsafe_b64encode(derived_key)
+
+    def _encrypt_token(self, token: str) -> Optional[str]:
+        """
+        Encrypt a token using Fernet symmetric encryption with password.
+
+        Args:
+            token: Plaintext token to encrypt
+
+        Returns:
+            Base64-encoded encrypted token, or None if no password available
+        """
+        try:
+            key = self._get_encryption_key()
+            if key is None:
+                logger.warning(
+                    "No encryption password provided - session token will be stored in plaintext. "
+                    "Set SESSION_TOKEN_PASSWORD env var or pass encryption_password parameter."
+                )
+                return None
+
+            fernet = Fernet(key)
+            encrypted_bytes = fernet.encrypt(token.encode("utf-8"))
+            return base64.b64encode(encrypted_bytes).decode("utf-8")
+        except Exception as exc:
+            logger.error("Failed to encrypt token: %s", exc)
+            raise
+
+    def _decrypt_token(self, encrypted_token: str) -> Optional[str]:
+        """
+        Decrypt an encrypted token with password.
+
+        Args:
+            encrypted_token: Base64-encoded encrypted token
+
+        Returns:
+            Decrypted plaintext token, or None if no password/decryption fails
+
+        Raises:
+            InvalidToken: If decryption fails with wrong password
+        """
+        try:
+            key = self._get_encryption_key()
+            if key is None:
+                logger.error(
+                    "Cannot decrypt session token: no encryption password provided. "
+                    "Set SESSION_TOKEN_PASSWORD env var or pass encryption_password parameter."
+                )
+                return None
+
+            fernet = Fernet(key)
+            encrypted_bytes = base64.b64decode(encrypted_token.encode("utf-8"))
+            decrypted_bytes = fernet.decrypt(encrypted_bytes)
+            return decrypted_bytes.decode("utf-8")
+        except InvalidToken:
+            logger.error("Failed to decrypt token: wrong password or corrupted data")
+            raise
+        except Exception as exc:
+            logger.error("Failed to decrypt token: %s", exc)
+            raise
+
     def _load_persisted_session_token(self) -> Tuple[str, Optional[int]]:
         path = self._session_store_path
         if not path.exists():
@@ -587,9 +761,46 @@ class PettWebSocketClient:
                 data = json.load(handle)
             if not isinstance(data, dict):
                 return "", None
-            token = data.get("sessionToken") or data.get("token")
+
+            encrypted_token = data.get("encryptedSessionToken")
+            token = None
+
+            # Try to load encrypted token first (new format)
+            if encrypted_token and isinstance(encrypted_token, str):
+                try:
+                    decrypted = self._decrypt_token(encrypted_token)
+                    if decrypted:
+                        token = decrypted
+                        logger.debug("Successfully loaded encrypted session token")
+                    else:
+                        logger.warning(
+                            "Cannot decrypt session token: no password provided. "
+                            "Falling back to plaintext if available."
+                        )
+                except Exception as exc:
+                    logger.warning(
+                        "Failed to decrypt session token (wrong password?): %s", exc
+                    )
+                    # Fall through to try legacy plaintext format
+
+            # Fall back to plaintext token (legacy format) if decryption failed or no encrypted token
+            if not token:
+                token = data.get("sessionToken") or data.get("token")
+                if token and isinstance(token, str):
+                    if self._encryption_password:
+                        logger.info(
+                            "Loaded plaintext session token. "
+                            "It will be re-saved in encrypted format on next update."
+                        )
+                    else:
+                        logger.warning(
+                            "⚠️  Loaded plaintext session token. "
+                            "Set SESSION_TOKEN_PASSWORD to encrypt it."
+                        )
+
             if not token or not isinstance(token, str):
                 return "", None
+
             expires_at = self._normalize_session_expiry(data.get("sessionExpiresAt"))
             # Check if the token has expired and clear it if so
             if self._is_session_expired(expires_at):
@@ -597,7 +808,8 @@ class PettWebSocketClient:
                 self._delete_persisted_session_token()
                 return "", None
             return token.strip(), expires_at
-        except Exception:
+        except Exception as exc:
+            logger.warning("Failed to load persisted session token: %s", exc)
             return "", None
 
     def _persist_session_token(self) -> None:
@@ -607,31 +819,110 @@ class PettWebSocketClient:
         path = self._session_store_path
         try:
             path.parent.mkdir(parents=True, exist_ok=True)
-            payload: Dict[str, Any] = {"sessionToken": token}
+
+            # Try to encrypt the token if password is available
+            encrypted_token = self._encrypt_token(token)
+
+            if encrypted_token:
+                # Save encrypted token
+                payload: Dict[str, Any] = {"encryptedSessionToken": encrypted_token}
+            else:
+                # No password - store in plaintext with warning
+                logger.warning(
+                    "⚠️  SESSION TOKEN STORED IN PLAINTEXT - "
+                    "No encryption password provided! "
+                    "Set SESSION_TOKEN_PASSWORD environment variable."
+                )
+                payload_plaintext: Dict[str, Any] = {"sessionToken": token}
+                payload = payload_plaintext
             if self._session_expires_at:
                 payload["sessionExpiresAt"] = self._session_expires_at
-            with path.open("w", encoding="utf-8") as handle:
-                json.dump(payload, handle, indent=2, sort_keys=True)
-            # Set restrictive permissions (owner read/write only)
-            # Note: Windows doesn't support Unix-style permissions, so this may not work there
-            if platform.system() != "Windows":
-                try:
-                    os.chmod(path, 0o600)
+
+            # Write to a temporary file first, then atomically rename
+            temp_path = path.with_suffix(".tmp")
+            try:
+                with temp_path.open("w", encoding="utf-8") as handle:
+                    json.dump(payload, handle, indent=2, sort_keys=True)
+
+                # Set restrictive permissions before moving the file
+                if platform.system() != "Windows":
+                    os.chmod(temp_path, 0o600)
                     # Verify permissions were actually set
-                    file_stat = os.stat(path)
+                    file_stat = os.stat(temp_path)
                     current_mode = stat.filemode(file_stat.st_mode)
                     if current_mode != "-rw-------":
-                        logger.warning(
-                            "Session token file permissions not properly restricted: %s (expected -rw-------)",
+                        logger.error(
+                            "Failed to set restrictive permissions on session token file: %s (expected -rw-------)",
                             current_mode,
                         )
-                except Exception as exc:
-                    logger.warning(
-                        "Failed to set restrictive permissions on session token file: %s",
-                        exc,
-                    )
+                        # Delete the file and abort - don't leave improperly secured tokens
+                        temp_path.unlink()
+                        raise PermissionError(
+                            f"Could not set restrictive permissions (got {current_mode})"
+                        )
+                else:
+                    # On Windows, use platform-specific ACLs for security
+                    try:
+                        import win32security
+                        import ntsecuritycon as con
+                        import win32api
+
+                        # Get current user
+                        user, domain, _ = win32security.LookupAccountName(
+                            "", win32api.GetUserName()
+                        )
+
+                        # Create a new security descriptor
+                        sd = win32security.SECURITY_DESCRIPTOR()
+                        sd.Initialize()
+
+                        # Create a new DACL (Discretionary Access Control List)
+                        dacl = win32security.ACL()
+                        dacl.Initialize()
+
+                        # Add ACE (Access Control Entry) for the owner with full control
+                        dacl.AddAccessAllowedAce(
+                            win32security.ACL_REVISION,
+                            con.FILE_ALL_ACCESS,
+                            user,
+                        )
+
+                        # Set the DACL to the security descriptor
+                        sd.SetSecurityDescriptorDacl(1, dacl, 0)
+
+                        # Apply security descriptor to the file
+                        win32security.SetFileSecurity(
+                            str(temp_path),
+                            win32security.DACL_SECURITY_INFORMATION,
+                            sd,
+                        )
+                        logger.debug("Set Windows ACL on session token file")
+                    except ImportError:
+                        logger.warning(
+                            "pywin32 not available - cannot set Windows file ACLs. "
+                            "Session token file may not be properly secured."
+                        )
+                    except Exception as win_exc:
+                        logger.warning(
+                            "Failed to set Windows ACLs on session token file: %s",
+                            win_exc,
+                        )
+
+                # Atomically replace the old file
+                temp_path.replace(path)
+                logger.debug("Successfully persisted encrypted session token")
+
+            finally:
+                # Clean up temp file if it still exists
+                if temp_path.exists():
+                    try:
+                        temp_path.unlink()
+                    except Exception:
+                        pass
+
         except Exception as exc:
-            logger.warning("Failed to persist session token: %s", exc)
+            logger.error("Failed to persist session token: %s", exc)
+            raise
 
     def _delete_persisted_session_token(self) -> None:
         path = self._session_store_path
@@ -762,7 +1053,11 @@ class PettWebSocketClient:
     async def authenticate(self, timeout: int = 10) -> bool:
         """Default authentication using available tokens with timeout.
 
-        Session tokens take precedence; Privy is only used when no session token exists.
+        Tries session tokens first if available, then falls back to Privy tokens.
+        This ensures authentication can succeed even if session tokens are expired/invalid.
+
+        Returns:
+            True if authentication succeeded with any available token, False otherwise.
         """
         candidates = self._get_auth_candidates()
         if not candidates:
@@ -1608,8 +1903,13 @@ class PettWebSocketClient:
                 self._pending_auth_type == "session"
                 and self._is_session_token_invalid(error_text)
             ):
-                logger.error(
-                    "🔑 Session token is invalid or expired. Please re-login via the UI Privy flow to mint a new session token."
+                logger.warning(
+                    "🔑 Session token is invalid or expired. Clearing it to allow fallback to Privy authentication."
+                )
+                # Clear the invalid session token to allow Privy fallback in next auth attempt
+                self.clear_session_token()
+                logger.info(
+                    "💡 Session token cleared. Next authentication attempt will use Privy token if available."
                 )
 
         # Resolve the auth future if it exists
@@ -1676,12 +1976,41 @@ class PettWebSocketClient:
         if pet_data:
             # Merge with existing data to avoid losing fields on partial updates
             if self.pet_data and isinstance(self.pet_data, dict):
-                merged = self._merge_pet_data(self.pet_data, pet_data)
-                # If pet id changes, prefer new payload entirely
                 old_id = self.pet_data.get("id")
                 new_id = pet_data.get("id")
-                self.pet_data = merged if not old_id or old_id == new_id else pet_data
-                logger.info("Pet Status updated (merged partial update)")
+                old_dead = self.pet_data.get("dead", False)
+                new_dead = pet_data.get("dead", False)
+
+                # If pet id changes, prefer new payload entirely (new pet)
+                if old_id and new_id and old_id != new_id:
+                    self.pet_data = pet_data
+                    logger.info(
+                        f"Pet Status updated (new pet ID: {old_id} -> {new_id})"
+                    )
+                else:
+                    # Same pet ID - merge the data (this handles pet resets where ID stays same)
+                    merged = self._merge_pet_data(self.pet_data, pet_data)
+                    self.pet_data = merged
+
+                    # Explicitly ensure dead status is updated from the new data
+                    # This is important for pet resets where dead status changes from true to false
+                    if "dead" in pet_data:
+                        self.pet_data["dead"] = pet_data["dead"]
+                        # Update new_dead to reflect the actual merged value
+                        new_dead = self.pet_data.get("dead", False)
+
+                    # Log dead status transitions for same pet (including resets)
+                    if old_dead and not new_dead:
+                        logger.info(
+                            f"✨ Pet revived/reset! Dead status cleared: {old_dead} -> {new_dead} "
+                            f"(Pet ID: {old_id or new_id})"
+                        )
+                    elif not old_dead and new_dead:
+                        logger.warning(
+                            f"💀 Pet died! Dead status changed: {old_dead} -> {new_dead} "
+                            f"(Pet ID: {old_id or new_id})"
+                        )
+                    logger.info("Pet Status updated (merged partial update)")
             else:
                 self.pet_data = pet_data
                 logger.info("Pet Status updated")

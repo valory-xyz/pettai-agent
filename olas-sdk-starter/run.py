@@ -153,6 +153,15 @@ async def main(password: Optional[str] = None):
             f"Ethereum private key: {'Found' if ethereum_private_key else 'Not found'}"
         )
         logger.info(f"Withdrawal mode: {withdrawal_mode}")
+        
+        # Check if session encryption password is provided
+        if password:
+            logger.info("✅ Session token encryption enabled (using provided password)")
+        else:
+            logger.warning(
+                "⚠️  Session tokens will be stored in PLAINTEXT - "
+                "provide password via --password flag for encryption"
+            )
 
         # Initialize Olas interface layer
         olas_interface = OlasInterface(
@@ -163,7 +172,10 @@ async def main(password: Optional[str] = None):
 
         # Initialize your Pett Agent with existing logic
         pett_agent = PettAgent(
-            olas_interface=olas_interface, logger=logger, is_production=True
+            olas_interface=olas_interface,
+            logger=logger,
+            is_production=True,
+            session_encryption_password=password,
         )
 
         # Start the agent

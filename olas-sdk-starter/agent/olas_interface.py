@@ -671,6 +671,12 @@ class OlasInterface:
                 self.logger.debug(
                     f"💀 Pet {self.pet_name} (ID: {self.pet_id}) is still dead."
                 )
+            elif was_dead and not new_dead_status:
+                # Pet was revived/reset (transition from dead to alive)
+                self.logger.info(
+                    f"✨ Pet {self.pet_name} (ID: {self.pet_id}) has been revived/reset! "
+                    "Pet is now alive and actions can be performed."
+                )
 
             if (
                 balance_float is not None

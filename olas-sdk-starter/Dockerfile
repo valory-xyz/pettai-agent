@@ -14,6 +14,9 @@ ARG BUILDPLATFORM
 
 FROM python:3.11-slim
 
+# Default port environment variable (can be overridden at runtime with -e WEB_PORT=...)
+ENV WEB_PORT=8716
+
 # Set working directory
 WORKDIR /app
 
@@ -51,11 +54,13 @@ RUN cd frontend && \
 RUN mkdir -p logs
 
 # Expose health check port (Olas SDK requirement)
+# Note: Actual runtime port is controlled by WEB_PORT environment variable
 EXPOSE 8716
 
 # Health check (Olas SDK requirement)
+# Uses sh to read WEB_PORT environment variable at runtime
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8716/healthcheck || exit 1
+    CMD sh -c 'curl -f http://localhost:${WEB_PORT:-8716}/healthcheck || exit 1'
 
 # Set environment variables
 ENV PYTHONPATH=/app

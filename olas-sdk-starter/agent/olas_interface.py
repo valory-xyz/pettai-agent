@@ -1036,24 +1036,9 @@ class OlasInterface:
             )
             return
 
-        safe_address: Optional[str] = None
-        safe_env_candidates = (
-            "STAKING_SAFE_ADDRESS",
-            "SERVICE_SAFE_ADDRESS",
-            "SAFE_CONTRACT_ADDRESS",
-            "CONNECTION_CONFIGS_CONFIG_SAFE_CONTRACT_ADDRESS",
-        )
-        for env_name in safe_env_candidates:
-            value = os.environ.get(env_name)
-            if value and value.strip():
-                safe_address = value.strip()
-                break
-        if not safe_address and discovered_staking:
-            safe_candidate = discovered_staking.get("safe_address")
-            if safe_candidate:
-                safe_address = safe_candidate
-                used_discovered_config = True
-        safe_address = safe_address or DEFAULT_SAFE_ADDRESS
+        safe_address = self._resolve_safe_address()
+        if not safe_address:
+            safe_address = DEFAULT_SAFE_ADDRESS
 
         liveness_env = os.environ.get(
             "STAKING_LIVENESS_PERIOD_SECONDS"
@@ -1123,125 +1108,6 @@ class OlasInterface:
                 discovered_staking.get("chain_name"),
             )
 
-    def _load_staking_config_from_operate(
-        self,
-        *,
-        service_id: Optional[int] = None,
-        chain_name: Optional[str] = None,
-    ) -> Optional[Dict[str, Any]]:
-        """Attempt to load staking configuration from .operate config.json files."""
-        operate_base = Path.home() / ".operate" / "services"
-        if not operate_base.exists():
-            return None
-
-        # Look for config.json files in service directories
-        config_files = list(operate_base.glob("*/config.json"))
-        if not config_files:
-            return None
-
-        # IMPORTANTE @edu: Fuck me don't try to change this again. When i think its worth changing it ITS not,
-        # it never passes QA from the OLAS folks. So don't even try to change it cc @edu
-
-        # Sort for stable diagnostics; selection happens explicitly below.
-        config_files = sorted(config_files)
-
-        candidates: List[Dict[str, Any]] = []
-        # Try each config file and collect those with staking config
-        for config_path in config_files:
-            try:
-                with open(config_path, "r", encoding="utf-8") as f:
-                    config_data = json.load(f)
-
-                # Extract home_chain
-                home_chain = config_data.get("home_chain")
-                if not home_chain:
-                    continue
-
-                # Get chain_configs
-                chain_configs = config_data.get("chain_configs", {})
-                chain_config = chain_configs.get(home_chain)
-                if not chain_config:
-                    continue
-
-                # Extract chain_data and user_params
-                chain_data = chain_config.get("chain_data", {})
-                user_params = chain_data.get("user_params", {})
-
-                # Extract staking_program_id
-                staking_program_id = user_params.get("staking_program_id")
-                if not staking_program_id:
-                    continue
-
-                # Extract other values
-                agent_id = user_params.get("agent_id")
-                ledger_config = chain_config.get("ledger_config", {})
-                rpc_url = ledger_config.get("rpc")
-
-                candidates.append(
-                    {
-                        "staking_program_id": staking_program_id,
-                        "service_id": agent_id,
-                        "chain_name": home_chain,
-                        "rpc_url": rpc_url,
-                        "source": str(config_path),
-                    }
-                )
-            except Exception as exc:
-                self.logger.warning(
-                    "Failed to load staking config from %s: %s",
-                    config_path,
-                    exc,
-                    exc_info=True,
-                )
-                continue
-
-        if not candidates:
-            return None
-
-        matches = candidates
-        if service_id is not None:
-            matches = [
-                candidate
-                for candidate in matches
-                if self._parse_int_like(candidate.get("service_id")) == service_id
-            ]
-        if chain_name:
-            matches = [
-                candidate
-                for candidate in matches
-                if candidate.get("chain_name") == chain_name
-            ]
-
-        if not matches:
-            if service_id is not None or chain_name:
-                self.logger.warning(
-                    "No .operate staking config matched filters (service_id=%s, chain=%s)",
-                    service_id if service_id is not None else "unknown",
-                    chain_name or "unknown",
-                )
-            return None
-
-        if len(matches) > 1:
-            match_sources = ", ".join(
-                sorted(candidate.get("source", "unknown") for candidate in matches)
-            )
-            self.logger.warning(
-                "Multiple .operate staking configs matched (service_id=%s, chain=%s). "
-                "Refusing to auto-select: %s",
-                service_id if service_id is not None else "unknown",
-                chain_name or "unknown",
-                match_sources,
-            )
-            return None
-
-        match = matches[0]
-        return {
-            "staking_program_id": match.get("staking_program_id"),
-            "service_id": match.get("service_id"),
-            "chain_name": match.get("chain_name"),
-            "rpc_url": match.get("rpc_url"),
-        }
-
     def _discover_staking_config(self) -> Optional[Dict[str, Any]]:
         """Attempt to infer staking configuration from environment variables."""
 
@@ -1270,6 +1136,7 @@ class OlasInterface:
             "SERVICE_RPC_URL",
             "CHECKPOINT_RPC_URL",
             "STAKING_LEDGER_RPC",
+            "CONNECTION_LEDGER_CONFIG_LEDGER_APIS_BASE_ADDRESS",
         )
         raw_service_id = _lookup(
             "SERVICE_ID",
@@ -1285,7 +1152,10 @@ class OlasInterface:
 
         staking_program_id = _lookup("STAKING_PROGRAM_ID", "SERVICE_STAKING_PROGRAM_ID")
         staking_contract_address = _lookup(
+            "STAKING_CONTRACT_ADDRESS",
+            "STAKING_PROXY_ADDRESS",
             "SERVICE_STAKING_PROXY_ADDRESS",
+            "SERVICE_STAKING_CONTRACT_ADDRESS",
         )
         staking_token_address = _lookup(
             "STAKING_TOKEN_ADDRESS",
@@ -1313,67 +1183,6 @@ class OlasInterface:
                 "Staking configuration not provided via environment variables. Missing: %s",
                 ", ".join(missing_required),
             )
-            # Try to load from .operate folder config.json
-            operate_config = self._load_staking_config_from_operate(
-                service_id=service_id_value
-                if service_id_value is not None and service_id_value >= 0
-                else None,
-                chain_name=chain_name,
-            )
-            if operate_config:
-                # Use values from operate config to fill in missing pieces
-                if not staking_program_id and operate_config.get("staking_program_id"):
-                    staking_program_id = operate_config["staking_program_id"]
-                if not chain_name and operate_config.get("chain_name"):
-                    chain_name = operate_config["chain_name"]
-                if not rpc_url and operate_config.get("rpc_url"):
-                    rpc_url = operate_config["rpc_url"]
-                if (
-                    service_id_value is None or service_id_value < 0
-                ) and operate_config.get("service_id") is not None:
-                    service_id_value = self._parse_int_like(
-                        operate_config["service_id"]
-                    )
-
-                # Check if we now have the required staking config
-                # DO NOT conflate staking_program_id, staking_contract_address, and staking_token_address
-                # They are distinct concepts and should not be used as fallbacks for each other
-                has_staking_target = bool(
-                    staking_contract_address
-                    or staking_program_id
-                    or staking_token_address
-                )
-                if (
-                    has_staking_target
-                    and service_id_value is not None
-                    and service_id_value >= 0
-                ):
-                    # Warn if staking_contract_address is missing (required for checkpoint operations)
-                    if not staking_contract_address:
-                        self.logger.warning(
-                            "staking_contract_address not found in operate config. "
-                            "Checkpoint operations may fail. staking_program_id=%s, staking_token_address=%s",
-                            staking_program_id or "None",
-                            staking_token_address or "None",
-                        )
-
-                    self.logger.info(
-                        "Loaded staking configuration from .operate config.json (service_id=%s, chain=%s)",
-                        service_id_value,
-                        chain_name or "unknown",
-                    )
-
-                    return {
-                        "source": "operate_config",
-                        "chain_name": chain_name,
-                        "rpc_url": rpc_url,
-                        "service_id": service_id_value,
-                        "safe_address": safe_address,
-                        "staking_program_id": staking_program_id,
-                        "staking_contract_address": staking_contract_address,
-                        "staking_token_address": staking_token_address,
-                    }
-
             # If still not found, use default staking_contract_address if available
             # DO NOT conflate staking_program_id with staking_contract_address
             # DEFAULT_STAKING_CONTRACT_ADDRESS is a contract address, not a program ID

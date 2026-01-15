@@ -1123,8 +1123,13 @@ class OlasInterface:
                 discovered_staking.get("chain_name"),
             )
 
-    def _load_staking_config_from_operate(self) -> Optional[Dict[str, Any]]:
-        """Attempt to load staking configuration from .operate folder config.json files."""
+    def _load_staking_config_from_operate(
+        self,
+        *,
+        service_id: Optional[int] = None,
+        chain_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """Attempt to load staking configuration from .operate config.json files."""
         operate_base = Path.home() / ".operate" / "services"
         if not operate_base.exists():
             return None
@@ -1137,12 +1142,11 @@ class OlasInterface:
         # IMPORTANTE @edu: Fuck me don't try to change this again. When i think its worth changing it ITS not,
         # it never passes QA from the OLAS folks. So don't even try to change it cc @edu
 
-        # Sort config files to ensure deterministic selection order
-        # DO NOT make this non-deterministic - sorting ensures consistent behavior
-        # when multiple services exist, preventing the agent from binding to the wrong service
+        # Sort for stable diagnostics; selection happens explicitly below.
         config_files = sorted(config_files)
 
-        # Try each config file until we find one with staking config
+        candidates: List[Dict[str, Any]] = []
+        # Try each config file and collect those with staking config
         for config_path in config_files:
             try:
                 with open(config_path, "r", encoding="utf-8") as f:
@@ -1173,12 +1177,15 @@ class OlasInterface:
                 ledger_config = chain_config.get("ledger_config", {})
                 rpc_url = ledger_config.get("rpc")
 
-                return {
-                    "staking_program_id": staking_program_id,
-                    "service_id": agent_id,
-                    "chain_name": home_chain,
-                    "rpc_url": rpc_url,
-                }
+                candidates.append(
+                    {
+                        "staking_program_id": staking_program_id,
+                        "service_id": agent_id,
+                        "chain_name": home_chain,
+                        "rpc_url": rpc_url,
+                        "source": str(config_path),
+                    }
+                )
             except Exception as exc:
                 self.logger.warning(
                     "Failed to load staking config from %s: %s",
@@ -1188,7 +1195,52 @@ class OlasInterface:
                 )
                 continue
 
-        return None
+        if not candidates:
+            return None
+
+        matches = candidates
+        if service_id is not None:
+            matches = [
+                candidate
+                for candidate in matches
+                if self._parse_int_like(candidate.get("service_id")) == service_id
+            ]
+        if chain_name:
+            matches = [
+                candidate
+                for candidate in matches
+                if candidate.get("chain_name") == chain_name
+            ]
+
+        if not matches:
+            if service_id is not None or chain_name:
+                self.logger.warning(
+                    "No .operate staking config matched filters (service_id=%s, chain=%s)",
+                    service_id if service_id is not None else "unknown",
+                    chain_name or "unknown",
+                )
+            return None
+
+        if len(matches) > 1:
+            match_sources = ", ".join(
+                sorted(candidate.get("source", "unknown") for candidate in matches)
+            )
+            self.logger.warning(
+                "Multiple .operate staking configs matched (service_id=%s, chain=%s). "
+                "Refusing to auto-select: %s",
+                service_id if service_id is not None else "unknown",
+                chain_name or "unknown",
+                match_sources,
+            )
+            return None
+
+        match = matches[0]
+        return {
+            "staking_program_id": match.get("staking_program_id"),
+            "service_id": match.get("service_id"),
+            "chain_name": match.get("chain_name"),
+            "rpc_url": match.get("rpc_url"),
+        }
 
     def _discover_staking_config(self) -> Optional[Dict[str, Any]]:
         """Attempt to infer staking configuration from environment variables."""
@@ -1262,7 +1314,12 @@ class OlasInterface:
                 ", ".join(missing_required),
             )
             # Try to load from .operate folder config.json
-            operate_config = self._load_staking_config_from_operate()
+            operate_config = self._load_staking_config_from_operate(
+                service_id=service_id_value
+                if service_id_value is not None and service_id_value >= 0
+                else None,
+                chain_name=chain_name,
+            )
             if operate_config:
                 # Use values from operate config to fill in missing pieces
                 if not staking_program_id and operate_config.get("staking_program_id"):

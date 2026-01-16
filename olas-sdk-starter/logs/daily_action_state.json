@@ -1,41 +1,4 @@
 {
-  "actions": [
-    {
-      "name": "CONSUMABLES_USE",
-      "timestamp": "2025-12-18T01:03:15.986150+00:00"
-    },
-    {
-      "name": "THROWBALL",
-      "timestamp": "2025-12-18T01:10:16.194084+00:00"
-    },
-    {
-      "name": "THROWBALL",
-      "timestamp": "2025-12-18T01:17:16.797569+00:00"
-    },
-    {
-      "name": "THROWBALL",
-      "timestamp": "2025-12-18T01:24:17.253141+00:00"
-    },
-    {
-      "name": "SHOWER",
-      "timestamp": "2025-12-18T01:31:17.882296+00:00"
-    },
-    {
-      "name": "THROWBALL",
-      "timestamp": "2025-12-18T01:48:24.468625+00:00"
-    },
-    {
-      "name": "THROWBALL",
-      "timestamp": "2025-12-18T01:55:18.316171+00:00"
-    },
-    {
-      "name": "THROWBALL",
-      "timestamp": "2025-12-18T02:02:18.514534+00:00"
-    },
-    {
-      "name": "THROWBALL",
-      "timestamp": "2025-12-18T02:09:18.937096+00:00"
-    }
-  ],
-  "epoch": "2025-12-18"
+  "actions": [],
+  "epoch": "2026-01-09"
 }

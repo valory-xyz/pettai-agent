@@ -22,7 +22,7 @@ from typing import (
     Tuple,
 )
 from dotenv import load_dotenv
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Import your existing logic
 from .pett_websocket_client import PettWebSocketClient
@@ -86,6 +86,7 @@ class PettAgent:
         olas_interface: OlasInterface,
         logger: logging.Logger,
         is_production: bool = True,
+        session_encryption_password: Optional[str] = None,
     ):
         """Initialize the Pett Agent."""
         self.olas = olas_interface
@@ -107,6 +108,7 @@ class PettAgent:
         self._telegram_token_valid = self._is_valid_telegram_token(self.telegram_token)
         self.privy_token = (self.olas.get_env_var("PRIVY_TOKEN") or "").strip()
         self.websocket_url = self.olas.get_env_var("WEBSOCKET_URL", "wss://ws.pett.ai")
+        self.session_encryption_password = session_encryption_password
 
         self.logger.info("🐾 Pett Agent initialized")
         # Action scheduler config uration
@@ -265,7 +267,8 @@ class PettAgent:
             if self.privy_token:
                 self.logger.info("🔌 Initializing WebSocket client...")
                 self.websocket_client = PettWebSocketClient(
-                    websocket_url=self.websocket_url
+                    websocket_url=self.websocket_url,
+                    encryption_password=self.session_encryption_password,
                 )
                 try:
                     self.websocket_client.set_action_recorder(
@@ -467,7 +470,8 @@ class PettAgent:
                 )
                 # Initialize WebSocket client for later use
                 self.websocket_client = PettWebSocketClient(
-                    websocket_url=self.websocket_url
+                    websocket_url=self.websocket_url,
+                    encryption_password=self.session_encryption_password,
                 )
                 try:
                     self.websocket_client.set_action_recorder(
@@ -695,7 +699,9 @@ class PettAgent:
         if not self.websocket_client:
             self.logger.info("🔌 Creating WebSocket client with new Privy token")
             self.websocket_client = PettWebSocketClient(
-                websocket_url=self.websocket_url, privy_token=token
+                websocket_url=self.websocket_url,
+                privy_token=token,
+                encryption_password=self.session_encryption_password,
             )
             try:
                 self.websocket_client.set_action_recorder(
@@ -2339,7 +2345,38 @@ class PettAgent:
                     return (completed, required, remaining, True), None
                 reason = "checkpoint client is running in checkpoint-only mode; staking KPIs unavailable"
         else:
-            reason = "staking checkpoint client is not configured or disabled"
+            # Build detailed reason for why client is unavailable
+            missing_vars = []
+            if client is None:
+                reason = "staking checkpoint client is not configured (client is None)"
+            else:
+                # Client exists but is not enabled - check what's missing
+                if not hasattr(client, "_w3") or client._w3 is None:
+                    missing_vars.append("Web3 provider not initialized")
+                if (
+                    not hasattr(client, "_staking_contract")
+                    or client._staking_contract is None
+                ):
+                    missing_vars.append("staking contract not initialized")
+                if not hasattr(client, "_account") or client._account is None:
+                    missing_vars.append("account not initialized")
+
+                # Check config values
+                if hasattr(client, "_config"):
+                    config = client._config
+                    if not (getattr(config, "private_key", "") or "").strip():
+                        missing_vars.append("private_key")
+                    if not (getattr(config, "rpc_url", "") or "").strip():
+                        missing_vars.append("rpc_url")
+                    if not (
+                        getattr(config, "staking_contract_address", "") or ""
+                    ).strip():
+                        missing_vars.append("staking_contract_address")
+
+                if missing_vars:
+                    reason = f"staking checkpoint client is disabled: missing or invalid {', '.join(missing_vars)}"
+                else:
+                    reason = "staking checkpoint client is disabled (unknown reason)"
             self.logger.debug(
                 "No staking checkpoint client available; using daily action tracker"
             )
@@ -2408,6 +2445,51 @@ class PettAgent:
 
         return False
 
+    def _format_time_remaining(self, seconds: Optional[int]) -> str:
+        """Format time remaining in a human-readable format."""
+        if seconds is None or seconds < 0:
+            return "unknown"
+
+        hours = seconds // 3600
+        minutes = (seconds % 3600) // 60
+        secs = seconds % 60
+
+        if hours > 0:
+            return f"{hours}h {minutes}m {secs}s"
+        elif minutes > 0:
+            return f"{minutes}m {secs}s"
+        else:
+            return f"{secs}s"
+
+    async def _get_time_until_next_epoch_reset(self) -> Optional[int]:
+        """Get time remaining in seconds until the next epoch reset.
+
+        Returns None if unable to determine.
+        """
+        now_ts = int(time.time())
+
+        # Try to get staking epoch end timestamp first
+        client = self.olas.get_staking_checkpoint_client()
+        if client and client.is_enabled:
+            try:
+                epoch_end = await client.get_next_epoch_end_timestamp()
+                if epoch_end and epoch_end > now_ts:
+                    return epoch_end - now_ts
+            except Exception:
+                pass  # Fall back to UTC day calculation
+
+        # Fallback: calculate time until next UTC midnight
+        try:
+            now_utc = datetime.now(timezone.utc)
+            # Get next midnight UTC
+            next_midnight = (now_utc + timedelta(days=1)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            next_midnight_ts = int(next_midnight.timestamp())
+            return max(0, next_midnight_ts - now_ts)
+        except Exception:
+            return None
+
     async def _log_action_progress(
         self, action_name: str, *, skipped_onchain_recording: bool = False
     ) -> None:
@@ -2437,14 +2519,18 @@ class PettAgent:
                     if skipped_onchain_recording
                     else ""
                 )
+                # Get time remaining until next epoch reset
+                time_remaining_sec = await self._get_time_until_next_epoch_reset()
+                time_str = self._format_time_remaining(time_remaining_sec)
                 self.logger.info(
-                    "📋 Action %s — %d/%d %s, %d remaining to unlock staking%s",
+                    "📋 Action %s — %d/%d %s, %d remaining to unlock staking%s (epoch resets in %s)",
                     action_name,
                     f_completed,
                     f_required,
                     scope_label,
                     f_remaining,
                     skipped_msg,
+                    time_str,
                 )
             else:
                 self.logger.info(
@@ -2462,13 +2548,17 @@ class PettAgent:
         skipped_msg = (
             ", skipped verification on-chain" if skipped_onchain_recording else ""
         )
+        # Get time remaining until next epoch reset
+        time_remaining_sec = await self._get_time_until_next_epoch_reset()
+        time_str = self._format_time_remaining(time_remaining_sec)
         self.logger.info(
-            "📋 Action %s — %d/%d verified on-chain txs this epoch, %d remaining to unlock staking%s",
+            "📋 Action %s — %d/%d verified on-chain txs this epoch, %d remaining to unlock staking%s (epoch resets in %s)",
             action_name,
             completed,
             required,
             remaining,
             skipped_msg,
+            time_str,
         )
 
     async def _record_resting_sleep_action(self, client: PettWebSocketClient) -> bool:

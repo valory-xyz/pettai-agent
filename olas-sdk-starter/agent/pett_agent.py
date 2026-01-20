@@ -2930,6 +2930,8 @@ class PettAgent:
         # When on-chain recording is skipped, we still want to count it for the staking threshold
         # (to avoid blocking the agent when on-chain recording is disabled).
         if success:
+            # Always record for UI (Latest activity) so it appears even when the frontend was not open
+            self._daily_action_tracker.record_display_action(normalized_name)
             # Record actions where on-chain recording was skipped (so they still count toward staking)
             # For actions with on-chain recording, the _onchain_success_recorder callback will record them
             if skipped_onchain_recording:

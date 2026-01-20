@@ -29,6 +29,7 @@ class DailyActionTracker:
         self._state: Dict[str, Any] = {
             "epoch": self._current_epoch(),
             "actions": [],
+            "display_actions": [],
         }
         self._load_state()
 
@@ -41,15 +42,15 @@ class DailyActionTracker:
         """Reset tracked actions when a new day/epoch begins."""
         current_epoch = self._current_epoch()
         stored_epoch = self._state.get("epoch")
-        
+
         if stored_epoch == current_epoch:
             # Same epoch, no reset needed
             return
-        
+
         # Epoch changed - reset the counter
         prev_count = len(self._state.get("actions", []))
         prev_epoch = stored_epoch or "unknown"
-        
+
         logger.info(
             "🔄 Daily reset triggered: epoch changed from %s to %s (UTC). "
             "Resetting action counter from %d to 0",
@@ -57,10 +58,10 @@ class DailyActionTracker:
             current_epoch,
             prev_count,
         )
-        
-        self._state = {"epoch": current_epoch, "actions": []}
+
+        self._state = {"epoch": current_epoch, "actions": [], "display_actions": []}
         self._save_state()
-        
+
         logger.info(
             "✅ Daily reset completed: new epoch=%s, counter reset to 0/%d",
             current_epoch,
@@ -78,6 +79,11 @@ class DailyActionTracker:
             if not isinstance(data, dict):
                 raise ValueError("tracker state must be a dict")
             self._state = data
+            # Backward compat: old state has only "actions"; use it for display_actions too
+            if "display_actions" not in self._state or not isinstance(
+                self._state["display_actions"], list
+            ):
+                self._state["display_actions"] = list(self._state.get("actions", []))
             self._ensure_current_epoch()
             if self._reset_on_start:
                 # Ignore persisted action counts; start fresh on boot
@@ -85,7 +91,11 @@ class DailyActionTracker:
                 self._save_state()
         except Exception as exc:
             logger.warning("Failed to load daily action tracker state: %s", exc)
-            self._state = {"epoch": self._current_epoch(), "actions": []}
+            self._state = {
+                "epoch": self._current_epoch(),
+                "actions": [],
+                "display_actions": [],
+            }
 
     def _save_state(self) -> None:
         """Persist the in-memory tracker state to disk."""
@@ -166,7 +176,28 @@ class DailyActionTracker:
             new_epoch,
             prev_count,
         )
-        self._state = {"epoch": new_epoch, "actions": []}
+        self._state = {"epoch": new_epoch, "actions": [], "display_actions": []}
+        self._save_state()
+
+    def record_display_action(
+        self, action_name: str, *, metadata: Optional[Dict[str, Any]] = None
+    ) -> None:
+        """Append a successful action to the display list (UI / Latest activity).
+
+        This is persisted so last actions appear even when the frontend was not open.
+        Called for every successful action; staking uses record_action separately.
+        """
+        if not action_name:
+            return
+        self._ensure_current_epoch()
+        entry: Dict[str, Any] = {
+            "name": action_name.upper(),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        if metadata:
+            entry["metadata"] = metadata
+        display: List[Dict[str, Any]] = self._state.setdefault("display_actions", [])
+        display.append(entry)
         self._save_state()
 
     def get_current_epoch(self) -> str:
@@ -185,5 +216,5 @@ class DailyActionTracker:
             "required_actions": self.required_actions,
             "completed": self.actions_completed(),
             "remaining": self.actions_remaining(),
-            "actions": list(self._state.get("actions", [])),
+            "actions": list(self._state.get("display_actions", [])),
         }

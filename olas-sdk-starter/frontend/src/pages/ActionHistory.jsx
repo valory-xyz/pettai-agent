@@ -227,9 +227,29 @@ const formatTime = timestamp => {
 	return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+const ACTION_HISTORY_STORAGE_KEY = 'pett:actionHistory';
+
+const loadCachedActionHistory = () => {
+	try {
+		if (typeof window === 'undefined') return { actions: [], epoch: null, completed: 0, required_actions: 0 };
+		const raw = window.localStorage.getItem(ACTION_HISTORY_STORAGE_KEY);
+		if (!raw) return { actions: [], epoch: null, completed: 0, required_actions: 0 };
+		const parsed = JSON.parse(raw);
+		if (!parsed || !Array.isArray(parsed.actions)) return { actions: [], epoch: null, completed: 0, required_actions: 0 };
+		return {
+			actions: parsed.actions,
+			epoch: parsed.epoch ?? null,
+			completed: Number.isFinite(parsed.completed) ? parsed.completed : 0,
+			required_actions: Number.isFinite(parsed.required_actions) ? parsed.required_actions : 0,
+		};
+	} catch {
+		return { actions: [], epoch: null, completed: 0, required_actions: 0 };
+	}
+};
+
 const ActionHistory = () => {
 	const navigate = useNavigate();
-	const [history, setHistory] = useState({ actions: [], epoch: null, completed: 0, required_actions: 0 });
+	const [history, setHistory] = useState(loadCachedActionHistory);
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState(null);
 	const [isInfoOpen, setIsInfoOpen] = useState(false);
@@ -281,12 +301,22 @@ const ActionHistory = () => {
 			const data = await res.json();
 			const completed = Number(data?.completed);
 			const requiredActions = Number(data?.required_actions);
-			setHistory({
-				actions: Array.isArray(data?.actions) ? data.actions : [],
+			const actions = Array.isArray(data?.actions) ? data.actions : [];
+			const next = {
+				actions,
 				epoch: data?.epoch ?? null,
 				completed: Number.isFinite(completed) ? completed : 0,
 				required_actions: Number.isFinite(requiredActions) ? requiredActions : 0,
-			});
+			};
+			setHistory(next);
+			// Persist to localStorage so last actions appear after refresh
+			if (actions.length > 0 && typeof window !== 'undefined') {
+				try {
+					window.localStorage.setItem(ACTION_HISTORY_STORAGE_KEY, JSON.stringify(next));
+				} catch (e) {
+					console.warn('[ActionHistory] Failed to cache action history', e);
+				}
+			}
 		} catch (err) {
 			console.error('[ActionHistory] Failed to load action history', err);
 			setError('Unable to load action history right now.');

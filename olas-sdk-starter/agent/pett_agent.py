@@ -1288,13 +1288,17 @@ class PettAgent:
             result["reason"] = "websocket_unavailable"
             return result
 
-        token = (self.privy_token or "").strip()
-        if not token:
-            result["reason"] = "privy_token_missing"
+        session_token = (client.session_token or "").strip()
+        privy_token = (client.privy_token or self.privy_token or "").strip()
+        primary_token = session_token or privy_token
+        if not primary_token:
+            result["reason"] = "auth_token_missing"
             return result
 
         async with self._auth_refresh_lock:
-            auth_success = await client.auth_ping(token, timeout=timeout)
+            auth_success = await client.auth_ping(primary_token, timeout=timeout)
+            if not auth_success and session_token and privy_token:
+                auth_success = await client.auth_ping(privy_token, timeout=timeout)
             result["success"] = bool(auth_success)
             result["websocket_connected"] = client.is_connected()
             result["websocket_authenticated"] = client.is_authenticated()

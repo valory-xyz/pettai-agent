@@ -1019,6 +1019,8 @@ class PettWebSocketClient:
             "token invalid",
             "token expired",
             "expired token",
+            "jwt expired",
+            "expired jwt",
             "invalid authentication",
             "authentication error",
             "401",  # HTTP 401 Unauthorized
@@ -1307,7 +1309,7 @@ class PettWebSocketClient:
                         if self._is_jwt_expired_error(error_text):
                             self._jwt_expired = True
                             logger.critical(
-                                "💀 JWT token expired - awaiting new token before reconnecting."
+                                "💀 JWT (Privy) token expired. Please re-login via the UI to get a new token — a new token is only sent when you log in again."
                             )
                             return False
                         if "user not found" in error_text:
@@ -1892,13 +1894,14 @@ class PettWebSocketClient:
             ):
                 self._jwt_expired = True
                 logger.error(
-                    "🔑 JWT token has expired! Please get a new token from your authentication provider."
+                    "🔑 JWT (Privy) token has expired. Please re-login via the UI to get a new token."
                 )
                 logger.error(
-                    "💡 This usually means you need to refresh your Privy token or get a new one."
+                    "💡 Re-login via the Privy flow in the UI to obtain a new session; the agent will use it on next /api/login."
                 )
-                logger.error(self.get_token_refresh_instructions())
-                logger.critical("💀 JWT token expired - waiting for refresh.")
+                logger.critical(
+                    "💀 JWT (Privy) token expired. Please re-login via the UI — do not wait for refresh; a new token is only sent when you log in again."
+                )
             elif (
                 self._pending_auth_type == "session"
                 and self._is_session_token_invalid(error_text)

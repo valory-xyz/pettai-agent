@@ -1017,7 +1017,6 @@ class OlasInterface:
                 break
 
         if not staking_address and discovered_staking:
-
             # DO NOT use staking_program_id as fallback for staking_contract_address
             # They are distinct concepts - staking_program_id is not an Ethereum address
             staking_candidate = discovered_staking.get("staking_contract_address")

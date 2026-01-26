@@ -1290,15 +1290,44 @@ class PettAgent:
 
         session_token = (client.session_token or "").strip()
         privy_token = (client.privy_token or self.privy_token or "").strip()
+
+        # Log available tokens for debugging
+        token_status = []
+        if session_token:
+            token_status.append("session_token=✓")
+        else:
+            token_status.append("session_token=✗")
+        if privy_token:
+            token_status.append("privy_token=✓")
+        else:
+            token_status.append("privy_token=✗")
+        self.logger.info(f"🔍 Health check tokens available: {', '.join(token_status)}")
+
         primary_token = session_token or privy_token
         if not primary_token:
             result["reason"] = "auth_token_missing"
+            self.logger.warning("⚠️  No auth tokens available for health check")
             return result
+
+        # Log which token is being used as primary
+        primary_type = "SESSION" if session_token else "PRIVY"
+        self.logger.info(f"🎯 Health check using PRIMARY token type: {primary_type}")
 
         async with self._auth_refresh_lock:
             auth_success = await client.auth_ping(primary_token, timeout=timeout)
+            if auth_success:
+                self.logger.info(f"✅ Health check AUTH succeeded with {primary_type} token")
+            else:
+                self.logger.warning(f"❌ Health check AUTH failed with {primary_type} token")
+
             if not auth_success and session_token and privy_token:
+                self.logger.info("🔄 Retrying health check with PRIVY token (fallback)")
                 auth_success = await client.auth_ping(privy_token, timeout=timeout)
+                if auth_success:
+                    self.logger.info("✅ Health check AUTH succeeded with PRIVY token (fallback)")
+                else:
+                    self.logger.warning("❌ Health check AUTH failed with PRIVY token (fallback)")
+
             result["success"] = bool(auth_success)
             result["websocket_connected"] = client.is_connected()
             result["websocket_authenticated"] = client.is_authenticated()

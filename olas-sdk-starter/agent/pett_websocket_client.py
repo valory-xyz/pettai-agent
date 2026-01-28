@@ -972,6 +972,13 @@ class PettWebSocketClient:
         if self.privy_token:
             add_candidate("privy", self.privy_token, "privy")
 
+        # Log available candidates for debugging
+        if candidates:
+            candidate_info = [f"{label}({auth_type})" for auth_type, _, label in candidates]
+            logger.info(f"🔑 Available auth candidates (priority order): {', '.join(candidate_info)}")
+        else:
+            logger.warning("⚠️  No auth candidates available")
+
         return candidates
 
     def _is_jwt_expired_error(self, error_text: str) -> bool:
@@ -1019,6 +1026,8 @@ class PettWebSocketClient:
             "token invalid",
             "token expired",
             "expired token",
+            "jwt expired",
+            "expired jwt",
             "invalid authentication",
             "authentication error",
             "401",  # HTTP 401 Unauthorized
@@ -1127,20 +1136,23 @@ class PettWebSocketClient:
                 },
             }
 
+            # Log the authentication attempt with detailed info
+            logger.info(f"📤 Sending AUTH message with authType='{auth_type}' to server")
+
             # Send the auth message
             success = await self._send_message(auth_message)
             if not success:
-                logger.error("Failed to send authentication message")
+                logger.error(f"❌ Failed to send AUTH message with authType='{auth_type}'")
                 self._pending_auth_token = None
                 self._pending_auth_type = None
                 return False
 
-            # logger.debug("🔐 Authentication message sent, waiting for response...")
+            logger.debug(f"⏳ AUTH message sent (type='{auth_type}'), waiting for response...")
 
             # Wait for the auth result with timeout
             try:
                 auth_result = await asyncio.wait_for(auth_future, timeout=timeout)
-                # logger.info(f"🔐 Authentication result: {auth_result}")
+                logger.info(f"✅ AUTH response received (type='{auth_type}'): success={auth_result}")
                 return auth_result
             except asyncio.TimeoutError:
                 # Timeout on single attempt is not critical - caller will handle retries
@@ -1307,7 +1319,7 @@ class PettWebSocketClient:
                         if self._is_jwt_expired_error(error_text):
                             self._jwt_expired = True
                             logger.critical(
-                                "💀 JWT token expired - awaiting new token before reconnecting."
+                                "💀 JWT (Privy) token expired. Please re-login via the UI to get a new token — a new token is only sent when you log in again."
                             )
                             return False
                         if "user not found" in error_text:
@@ -1426,6 +1438,8 @@ class PettWebSocketClient:
     async def auth_ping(self, token: Optional[str] = None, timeout: int = 10) -> bool:
         """Send a lightweight AUTH to refresh pet data without restarting the client."""
         auth_type = None
+        token_source = None
+
         if token:
             auth_token = token.strip()
             auth_type = self._infer_auth_type(auth_token)
@@ -1437,12 +1451,16 @@ class PettWebSocketClient:
                     auth_type = "session"
                 else:
                     auth_type = "privy"
+            token_source = "explicitly_provided"
+            logger.info(f"🔐 auth_ping: Using {token_source} token of type '{auth_type}'")
         else:
             candidates = self._get_auth_candidates()
             if not candidates:
                 logger.warning("auth_ping skipped: no auth token available")
                 return False
-            auth_type, auth_token, _ = candidates[0]
+            auth_type, auth_token, token_label = candidates[0]
+            token_source = f"auto_selected_{token_label}"
+            logger.info(f"🔐 auth_ping: Using {token_source} token of type '{auth_type}' (selected from {len(candidates)} candidates)")
 
         auth_token = (auth_token or "").strip()
         if not auth_token:
@@ -1463,7 +1481,9 @@ class PettWebSocketClient:
 
             try:
                 if auth_type == "session":
+                    logger.info(f"➡️  auth_ping: Calling authenticate_session() with {token_source}")
                     return await self.authenticate_session(auth_token, timeout=timeout)
+                logger.info(f"➡️  auth_ping: Calling authenticate_privy() with {token_source}")
                 return await self.authenticate_privy(auth_token, timeout=timeout)
             except Exception as exc:
                 logger.error("auth_ping error: %s", exc)
@@ -1812,6 +1832,10 @@ class PettWebSocketClient:
             session_expires_at = message.get("sessionExpiresAt")
 
         if success:
+            # Log which token type succeeded
+            success_token_type = self._pending_auth_type or "unknown"
+            logger.info(f"✅ Authentication succeeded with token type '{success_token_type}'")
+
             self.authenticated = True
             # Reset JWT expiration flag on successful auth
             self._jwt_expired = False
@@ -1873,7 +1897,9 @@ class PettWebSocketClient:
                 logger.info(f"🔑 Privy ID: {user_data.get('privyID', 'Unknown')}")
                 logger.info(f"📱 Telegram ID: {user_data.get('telegramID', 'Unknown')}")
         else:
-            logger.error(f"❌ Authentication failed: {error}")
+            # Log which token type failed
+            failed_token_type = self._pending_auth_type or "unknown"
+            logger.error(f"❌ Authentication failed with token type '{failed_token_type}': {error}")
             self.authenticated = False
 
             # Store the error for retry logic
@@ -1892,13 +1918,14 @@ class PettWebSocketClient:
             ):
                 self._jwt_expired = True
                 logger.error(
-                    "🔑 JWT token has expired! Please get a new token from your authentication provider."
+                    "🔑 JWT (Privy) token has expired. Please re-login via the UI to get a new token."
                 )
                 logger.error(
-                    "💡 This usually means you need to refresh your Privy token or get a new one."
+                    "💡 Re-login via the Privy flow in the UI to obtain a new session; the agent will use it on next /api/login."
                 )
-                logger.error(self.get_token_refresh_instructions())
-                logger.critical("💀 JWT token expired - waiting for refresh.")
+                logger.critical(
+                    "💀 JWT (Privy) token expired. Please re-login via the UI — do not wait for refresh; a new token is only sent when you log in again."
+                )
             elif (
                 self._pending_auth_type == "session"
                 and self._is_session_token_invalid(error_text)

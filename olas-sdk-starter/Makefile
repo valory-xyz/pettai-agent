@@ -7,7 +7,7 @@ PLATFORM_STR := $(shell uname)
 RUNNER_NAME := agent_runner_bin
 DIST_PATH := dist/$(RUNNER_NAME)
 PYINSTALLER_ENTRY := pyinstaller/agent_runner_entry.py
-PYINSTALLER_DEPS_SCRIPT := get_pyinstaller_dependencies.py
+PYINSTALLER_DEPS_SCRIPT := .py
 PYINSTALLER_BIN := $(RUNNER_NAME)
 PYINSTALLER_CMD := pyinstaller
 AUTONOMY_CMD := autonomy
@@ -164,6 +164,7 @@ install-deps: clean-cache
 	python -m pip install --upgrade pip setuptools wheel
 	python -m pip install -r requirements.txt
 	python -m pip install open-autonomy==0.19.11 pyinstaller==6.4.0
+	python -m pip install -U "setuptools<70.0.0" ## there is an issue with pyinstaller, so stick setuptools
 
 # Write the agent IPFS hash to hash_id
 $(HASH_FILE): $(PACKAGES_FILE)
@@ -218,6 +219,8 @@ build-agent-runner: install-deps $(AGENT_DIR) build-frontend
 	--collect-data eth_account \
 		--collect-all agent \
 		--collect-all setuptools \
+		--collect-all pydantic \
+	--hidden-import pydantic \
 	--hidden-import agent.olas_interface \
 	--hidden-import agent.pett_agent \
 	--hidden-import agent.decision_engine \
@@ -238,6 +241,8 @@ build-agent-runner-mac: install-deps $(AGENT_DIR) build-frontend
 	--collect-data eth_account \
 		--collect-all agent \
 		--collect-all setuptools \
+	--collect-all pydantic \
+	--hidden-import pydantic \
 	--hidden-import agent.olas_interface \
 	--hidden-import agent.pett_agent \
 	--hidden-import agent.decision_engine \

@@ -233,6 +233,8 @@ build-agent-runner: install-deps $(AGENT_DIR) build-frontend
 # macOS build with codesigning. Here we use the -p . flag to include the project root in the PYTHONPATH as well.
 .PHONY: build-agent-runner-mac
 build-agent-runner-mac: install-deps $(AGENT_DIR) build-frontend
+	pip install "setuptools<70.0.0";\
+	pipenv run pip install "setuptools<70.0.0";\
 	$(PYINSTALLER_CMD) \
 	-p . \
 	--collect-data eth_account \

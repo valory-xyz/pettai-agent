@@ -164,6 +164,7 @@ install-deps: clean-cache
 	python -m pip install --upgrade pip setuptools wheel
 	python -m pip install -r requirements.txt
 	python -m pip install open-autonomy==0.19.11 pyinstaller==6.4.0
+	python -m pip install -U "setuptools<70.0.0" ## there is an issue with pyinstaller, so stick setuptools
 
 # Write the agent IPFS hash to hash_id
 $(HASH_FILE): $(PACKAGES_FILE)

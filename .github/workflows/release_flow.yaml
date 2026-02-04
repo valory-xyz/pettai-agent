@@ -124,7 +124,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-14, macos-14-large]
+        os: [windows-latest, macos-14, macos-14-large, ubuntu-latest]
     defaults:
       run:
         shell: bash
@@ -182,12 +182,27 @@ jobs:
           echo "REACT_APP_PRIVY_CLIENT_ID=${{ secrets.REACT_APP_PRIVY_CLIENT_ID }}" >> .env
           echo "✅ Created .env file with Privy App ID"
       - name: Prepare agent archives # tar/zip bundles for release assets
-        if: runner.os != 'Windows'
+        if: runner.os == 'macOS'
         run: |
           make agent.zip
           make agent.tar.gz
+      #linux
+      - name: Build Agent Runner Linux
+        if: runner.os == 'Linux'
+        run: |
+          make build-agent-runner-mac
+
+      - name: rename the file linux
+        if: runner.os == 'Linux'
+        run: |
+          export FILENAME=`echo -n agent_runner_${{runner.os}}_${{runner.arch}}|tr '[:upper:]' '[:lower:]'`
+          echo "FILENAME=$FILENAME" >> $GITHUB_ENV;
+          cp dist/agent_runner_bin dist/${FILENAME}
+          chmod +x dist/${FILENAME}
+
+      # mac
       - name: Build and sign macOS binary # runs PyInstaller and codesigns output, needs changing from the OLAS team
-        if: runner.os != 'Windows'
+        if: runner.os == 'macOS'
         env:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           CSC_LINK: ${{ secrets.CSC_LINK }}
@@ -208,7 +223,7 @@ jobs:
 
           codesign -dv --verbose=4 dist/agent_runner_bin
       - name: Rename macOS binary to release naming convention
-        if: runner.os != 'Windows'
+        if: runner.os == 'macOS'
         run: |
           export FILENAME=$(echo -n agent_runner_${{ runner.os }}_${{ runner.arch }} | tr '[:upper:]' '[:lower:]')
           echo "FILENAME=$FILENAME" >> "$GITHUB_ENV"
@@ -269,6 +284,7 @@ jobs:
     needs: build-agent-runner
     runs-on: ubuntu-latest
     steps:
+      #mac
       - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -281,11 +297,20 @@ jobs:
         with:
           name: agent_runner_macos_arm64
           path: ./dist/
+      # windows
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
           name: agent_runner_windows_x64.exe
           path: ./dist/
+      # linux
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: agent_runner_linux_x64
+          path: ./dist/
+    
+      
       - name: Download agent_id artifact
         uses: actions/download-artifact@v4
         with:

@@ -717,6 +717,12 @@ class OlasInterface:
                     )
                 except Exception:
                     pass
+                try:
+                    raw_level_max = stats.get("levelMax")
+                    if raw_level_max is not None:
+                        self.pet_level_max = int(raw_level_max)
+                except Exception:
+                    pass
 
             self.logger.debug(f"Pet data updated: {self.pet_name} (ID: {self.pet_id})")
             self._update_agent_performance_metrics()
@@ -737,6 +743,7 @@ class OlasInterface:
             self.pet_xp_min = 0.0
             self.pet_xp_max = 100.0
             self.pet_level = 1
+            self.pet_level_max = 400
 
     def record_client_send(
         self, message: Dict[str, Any], success: bool, error: Optional[str] = None

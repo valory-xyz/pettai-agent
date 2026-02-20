@@ -1600,10 +1600,22 @@ class PettAgent:
                                                 )
                                                 # Record failure to prevent retry loops
                                                 if self.decision_engine:
+                                                    failure_reason = (
+                                                        f"Execution failed: {decision.reason}"
+                                                    )
+                                                    last_error = None
+                                                    if self.websocket_client:
+                                                        last_error = (
+                                                            self.websocket_client.get_last_action_error()
+                                                        )
+                                                    if last_error:
+                                                        failure_reason = (
+                                                            f"{failure_reason} | server_error: {last_error}"
+                                                        )
                                                     self.decision_engine.record_action_failure(
                                                         action=decision.action,
                                                         params=decision.params,
-                                                        reason=f"Execution failed: {decision.reason}",
+                                                        reason=failure_reason,
                                                     )
                                         except Exception as e:
                                             self.logger.error(
@@ -2071,13 +2083,25 @@ class PettAgent:
                         "⚠️ CONSUMABLES_USE decision missing consumable_id"
                     )
                     return False
-                return await self._execute_action_with_tracking(
+                success = await self._execute_action_with_tracking(
                     "CONSUMABLES_USE",
                     lambda: client.use_consumable(
                         consumable_id, record_on_chain=record_on_chain
                     ),
                     skipped_onchain_recording=not record_on_chain,
                 )
+                if success:
+                    return True
+
+                if self._last_action_failed_due_to_insufficient_tokens():
+                    self.logger.warning(
+                        "⚠️ CONSUMABLES_USE failed due to insufficient tokens; "
+                        "running free fallback action"
+                    )
+                    return await self._execute_low_balance_fallback_action(
+                        record_on_chain=record_on_chain
+                    )
+                return False
 
             elif decision.action == ActionType.CONSUMABLES_BUY:
                 consumable_id = decision.params.get("consumable_id", "")
@@ -2088,11 +2112,23 @@ class PettAgent:
                     )
                     return False
                 # Note: buy_consumable may not support record_on_chain parameter
-                return await self._execute_action_with_tracking(
+                success = await self._execute_action_with_tracking(
                     "CONSUMABLES_BUY",
                     lambda: client.buy_consumable(consumable_id, amount),
                     skipped_onchain_recording=not record_on_chain,
                 )
+                if success:
+                    return True
+
+                if self._last_action_failed_due_to_insufficient_tokens():
+                    self.logger.warning(
+                        "⚠️ CONSUMABLES_BUY failed due to insufficient tokens; "
+                        "running free fallback action"
+                    )
+                    return await self._execute_low_balance_fallback_action(
+                        record_on_chain=record_on_chain
+                    )
+                return False
 
             else:
                 self.logger.warning("Unknown action type: %s", decision.action)
@@ -3267,6 +3303,93 @@ class PettAgent:
             return "already clean" in err_text.lower()
         except Exception:
             return False
+
+    def _last_action_failed_due_to_insufficient_tokens(self) -> bool:
+        """Detect token-shortage errors returned by the server."""
+        try:
+            if not self.websocket_client:
+                return False
+            err_text = self.websocket_client.get_last_action_error()
+            if not err_text:
+                return False
+            lowered = err_text.lower()
+            shortage_markers = (
+                "not enough token",
+                "does not have enough token",
+                "does not have enought token",
+                "insufficient token",
+                "insufficient balance",
+                "insufficient funds",
+            )
+            return any(marker in lowered for marker in shortage_markers)
+        except Exception:
+            return False
+
+    async def _execute_low_balance_fallback_action(
+        self, *, record_on_chain: bool
+    ) -> bool:
+        """Run free actions when consumable purchase/use fails due to low balance."""
+        if not self.websocket_client:
+            return False
+
+        client = self.websocket_client
+        fallback_actions: List[Tuple[str, Callable[[], Awaitable[bool]], bool]] = []
+
+        # THROWBALL is preferred to farm tokens when any core stat allows it.
+        can_throwball = True
+        try:
+            pet_data = client.get_pet_data() or {}
+            stats = pet_data.get("stats", {}) if isinstance(pet_data, dict) else {}
+            health = self._to_float(stats.get("health", 0))
+            hunger = self._to_float(stats.get("hunger", 0))
+            energy = self._to_float(stats.get("energy", 0))
+            can_throwball = any(value >= 15.0 for value in (health, hunger, energy))
+        except Exception:
+            can_throwball = True
+
+        if can_throwball:
+            fallback_actions.append(
+                (
+                    "THROWBALL",
+                    lambda: client.throw_ball(record_on_chain=record_on_chain),
+                    False,
+                )
+            )
+        else:
+            self.logger.info(
+                "Low-balance fallback: skipping THROWBALL because core stats are too low"
+            )
+
+        fallback_actions.extend(
+            [
+                (
+                    "SHOWER",
+                    lambda: client.shower_pet(record_on_chain=record_on_chain),
+                    True,
+                ),
+                ("RUB", lambda: client.rub_pet(record_on_chain=record_on_chain), True),
+                (
+                    "SLEEP",
+                    lambda: client.sleep_pet(record_on_chain=record_on_chain),
+                    False,
+                ),
+            ]
+        )
+
+        for action_name, action_callable, allow_clean in fallback_actions:
+            self.logger.info("🔁 Low-balance fallback: trying %s", action_name)
+            success = await self._execute_action_with_tracking(
+                action_name,
+                action_callable,
+                treat_already_clean_as_success=allow_clean,
+                skipped_onchain_recording=not record_on_chain,
+            )
+            if success:
+                self.logger.info("✅ Low-balance fallback action succeeded: %s", action_name)
+                return True
+
+        self.logger.warning("⚠️ Low-balance fallback actions failed")
+        return False
 
     def _needs_structured_actions(self) -> bool:
         """True until the agent logs the minimum required transactions for the epoch."""

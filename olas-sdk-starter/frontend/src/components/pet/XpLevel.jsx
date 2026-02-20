@@ -36,8 +36,7 @@ const XpLevel = ({ level, xp, xpMin, xpMax, levelMax, border = true, margin = tr
 		.filter(Boolean)
 		.join(' ');
 
-	const levelMaxVal = Number.isFinite(Number(levelMax)) ? Number(levelMax) : MAX_PET_LEVEL;
-	const levelDisplay = `${Number(level)}/${levelMaxVal}`;
+	const levelDisplay = `${Number(level)}`;
 
 	return (
 		<div className={containerClass}>

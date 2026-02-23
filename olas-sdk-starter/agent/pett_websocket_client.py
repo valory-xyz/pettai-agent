@@ -415,17 +415,23 @@ class PettWebSocketClient:
         self._pending_nonces[nonce] = fut  # type: ignore[assignment]
         return fut
 
-    def _resolve_pending(self, nonce: Optional[str], message: Dict[str, Any]) -> None:
-        """Resolve any pending future by nonce with the provided message."""
+    def _resolve_pending(self, nonce: Optional[str], message: Dict[str, Any]) -> bool:
+        """Resolve any pending future by nonce with the provided message.
+
+        Returns True if a waiting caller was resolved (verification will be
+        handled by the action method), False otherwise.
+        """
         if not nonce:
-            return
+            return False
         fut = self._pending_nonces.pop(nonce, None)
         if fut and not fut.done():
             try:
                 fut.set_result(message)
+                return True
             except Exception:
                 # Ignore resolution errors to avoid cascading failures
                 pass
+        return False
 
     async def connect(self) -> bool:
         """Establish WebSocket connection to Pett.ai server."""
@@ -2045,9 +2051,14 @@ class PettWebSocketClient:
     async def _handle_message(self, message: Dict[str, Any]) -> None:
         """Handle incoming messages from the server."""
         message_type = message.get("type")
-        # Resolve any waiting caller by nonce, if present
+        # Resolve any waiting caller by nonce, if present.
+        # If resolved, the action method (sleep_pet, etc.) will handle
+        # the verification inline, so _handle_data should skip it.
+        nonce_resolved = False
         try:
-            self._resolve_pending(message.get("nonce"), message)
+            nonce_resolved = self._resolve_pending(
+                message.get("nonce"), message
+            )
         except Exception:
             pass
         if message_type == "auth_result":
@@ -2057,7 +2068,7 @@ class PettWebSocketClient:
         elif message_type == "error":
             await self._handle_error(message)
         elif message_type == "data":
-            await self._handle_data(message)
+            await self._handle_data(message, nonce_resolved=nonce_resolved)
 
         # Call registered handlers
         if message_type in self.message_handlers:
@@ -2365,11 +2376,45 @@ class PettWebSocketClient:
         except Exception:
             pass
 
-    async def _handle_data(self, message: Dict[str, Any]) -> None:
+    async def _handle_data(
+        self,
+        message: Dict[str, Any],
+        *,
+        nonce_resolved: bool = False,
+    ) -> None:
         """Handle data message."""
         self.data_message = message
         logger.info("📊 Received data message")
         logger.info(f"Data message: {message}")
+
+        # Pick up late-arriving verification from data messages.
+        # When _send_and_wait times out, the verification may arrive
+        # as a separate "data" message afterwards. Submit it on-chain.
+        # Skip if nonce was resolved (action method will handle inline).
+        if not nonce_resolved:
+            try:
+                data = message.get("data", {})
+                verification = data.get("verification")
+                if isinstance(verification, dict):
+                    action_name = (
+                        verification.get("message", {})
+                        .get("actionName", "")
+                    )
+                    if action_name:
+                        logger.info(
+                            "📗 Late verification arrived for %s; "
+                            "submitting on-chain",
+                            action_name,
+                        )
+                        self._schedule_verified_record_action(
+                            action_name, verification
+                        )
+            except Exception as exc:
+                logger.debug(
+                    "Error processing late verification "
+                    "from data message: %s",
+                    exc,
+                )
 
         # Handle AI search results
         if self.ai_search_future and not self.ai_search_future.done():
@@ -2499,15 +2544,13 @@ class PettWebSocketClient:
             self._schedule_verified_record_action("SLEEP", verification)
             return True
 
-        recorder_enabled = bool(
-            self._action_recorder and self._action_recorder.is_enabled
+        # Verification may arrive as a late "data" message after the timeout.
+        # _handle_data will pick it up and submit it on-chain.
+        # Still return True so the action counts and the 7-min timer advances.
+        logger.info(
+            "🧾 SLEEP verification not in initial response; "
+            "will be picked up from late data message if it arrives"
         )
-        if recorder_enabled:
-            logger.warning(
-                "🧾 SLEEP verification missing; will retry to ensure on-chain record"
-            )
-            return False
-
         return True
 
     async def throw_ball(self, *, record_on_chain: Optional[bool] = None) -> bool:

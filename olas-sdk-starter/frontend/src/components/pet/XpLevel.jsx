@@ -36,7 +36,7 @@ const XpLevel = ({ level, xp, xpMin, xpMax, levelMax, border = true, margin = tr
 		.filter(Boolean)
 		.join(' ');
 
-	const levelDisplay = `${Number(level)}`;
+	const levelDisplay = `${Math.min(Number(level), MAX_PET_LEVEL)}`;
 
 	return (
 		<div className={containerClass}>

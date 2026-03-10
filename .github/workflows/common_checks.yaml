@@ -136,3 +136,16 @@ jobs:
       - name: Check spelling
         working-directory: olas-sdk-starter
         run: tomte check-spelling
+
+  scan:
+    name: gitleaks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - run: |
+          wget https://github.com/gitleaks/gitleaks/releases/download/v8.30.0/gitleaks_8.30.0_linux_x64.tar.gz && \
+          tar -xzf gitleaks_8.30.0_linux_x64.tar.gz && \
+          sudo install gitleaks /usr/bin && \
+          gitleaks detect --report-format json --report-path leak_report -v

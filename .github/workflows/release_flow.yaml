@@ -124,7 +124,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-14, macos-14-large, ubuntu-latest]
+        os: [windows-latest, macos-15, macos-15-large, ubuntu-latest]
     defaults:
       run:
         shell: bash
@@ -225,6 +225,7 @@ jobs:
       - name: Rename macOS binary to release naming convention
         if: runner.os == 'macOS'
         run: |
+          echo "resulting filename formacos $FILENAME" 
           export FILENAME=$(echo -n agent_runner_${{ runner.os }}_${{ runner.arch }} | tr '[:upper:]' '[:lower:]')
           echo "FILENAME=$FILENAME" >> "$GITHUB_ENV"
           cp dist/agent_runner_bin "dist/${FILENAME}"

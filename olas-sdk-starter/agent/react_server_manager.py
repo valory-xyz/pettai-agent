@@ -9,20 +9,21 @@ import os
 import subprocess
 import signal
 from pathlib import Path
-from typing import Optional
 import time
 import aiohttp
-import socket
 
 logger = logging.getLogger(__name__)
+
+# Web server port is fixed (Olas SDK / deployment contract)
+WEB_PORT = 8716
 
 
 class ReactServerManager:
     """Manages React development server as a subprocess."""
 
-    def __init__(self, react_dir: str = "frontend", port: int = 8716):
+    def __init__(self, react_dir: str = "frontend"):
         self.react_dir = Path(react_dir)
-        self.port = port
+        self.port = WEB_PORT
         self.process: Optional[subprocess.Popen] = None
         self.is_running = False
 
@@ -125,14 +126,6 @@ class ReactServerManager:
             # Ensure dependencies are installed
             if not await self.ensure_dependencies():
                 return False
-
-            # Choose an available port proactively to avoid interactive prompts
-            chosen_port = self._select_available_port(self.port)
-            if chosen_port != self.port:
-                logger.info(
-                    f"🔀 Port {self.port} is busy, switching React dev server to {chosen_port}"
-                )
-                self.port = chosen_port
 
             logger.info(f"🚀 Starting React dev server on port {self.port}...")
 
@@ -245,69 +238,3 @@ class ReactServerManager:
             "url": f"http://localhost:{self.port}" if self.is_running else None,
             "process_alive": self.process.poll() is None if self.process else False,
         }
-
-    def _port_is_in_use(self, port: int) -> bool:
-        """Check if a TCP port on localhost is already in use."""
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.settimeout(0.5)
-            result = s.connect_ex(("127.0.0.1", port))
-            return result == 0
-
-    def _try_bind_port(self, port: int) -> Optional[socket.socket]:
-        """Atomically attempt to bind to a port. Returns bound socket if successful, None otherwise."""
-        try:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            s.bind(("127.0.0.1", port))
-            s.listen(128)  # Put socket in listen state to fully reserve the port
-            return s
-        except OSError:
-            # Port is in use or bind failed
-            return None
-
-    def _select_available_port(self, preferred: int) -> int:
-        """Pick an available port, preferring the given one; if occupied, scan upward for next available.
-
-        Uses atomic binding to avoid TOCTOU race conditions - ports are reserved by binding
-        rather than just checking availability.
-        """
-        # Try to atomically bind to the preferred port
-        bound_socket = self._try_bind_port(preferred)
-        if bound_socket is not None:
-            port = preferred
-            bound_socket.close()  # Close immediately - minimal race window before React server starts
-            logger.info(f"✅ Using available port {port}")
-            return port
-
-        # Preferred port is occupied, scan upward starting from the next port
-        logger.info(
-            f"🔍 Port {preferred} is occupied, scanning for next available port..."
-        )
-        start = preferred + 1
-        # Ensure we don't go below a reasonable minimum
-        if start < 3000:
-            start = 3000
-
-        # Scan a range for an open port (check up to 200 ports ahead)
-        # Use atomic binding instead of checking first
-        for candidate in range(start, start + 200):
-            bound_socket = self._try_bind_port(candidate)
-            if bound_socket is not None:
-                port = candidate
-                bound_socket.close()  # Close immediately - minimal race window before React server starts
-                logger.info(f"✅ Using available port {port}")
-                return port
-
-        # Fallback to an ephemeral port assigned by OS if everything else fails
-        logger.warning(
-            f"⚠️ No port found in range {start}-{start + 199}, using OS-assigned ephemeral port"
-        )
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        s.bind(("127.0.0.1", 0))
-        s.listen(128)
-        ephemeral_port = s.getsockname()[1]
-        s.close()  # Close immediately - minimal race window before React server starts
-        logger.info(f"✅ Using available port {ephemeral_port}")
-        return ephemeral_port

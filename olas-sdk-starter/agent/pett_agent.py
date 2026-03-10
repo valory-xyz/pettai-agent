@@ -92,6 +92,7 @@ class PettAgent:
         self.olas = olas_interface
         self.logger = logger
         self.is_production = is_production
+        self.web_port = 8716  # Fixed port (Olas SDK / deployment contract)
         self.running = False
         self.olas.register_agent(self)
 
@@ -231,12 +232,8 @@ class PettAgent:
         return record_success
 
     def _get_web_port(self) -> int:
-        """Get the actual web server port, checking ReactServerManager first if available, then OlasInterface."""
-        # Check if ReactServerManager is being used (for dev mode)
-        if hasattr(self, "react_server_manager") and self.react_server_manager:
-            return self.react_server_manager.port
-        # Fallback to OlasInterface web port
-        return getattr(self.olas, "web_port", 8716)
+        """Return the fixed web server port."""
+        return 8716
 
     # TypedDicts for pet data shape
     class PetTokensDict(TypedDict, total=False):
@@ -1584,6 +1581,23 @@ class PettAgent:
                                                 await self._execute_decision(decision)
                                             )
 
+                                            # --- Last-resort fallback ---
+                                            # If the primary decision (and its own
+                                            # internal fallbacks) all failed, force a
+                                            # guaranteed free action so we ALWAYS
+                                            # record at least one on-chain tx per
+                                            # cycle.
+                                            if not action_success:
+                                                self.logger.warning(
+                                                    "⚠️ Primary decision %s failed; "
+                                                    "running last-resort fallback to "
+                                                    "guarantee an on-chain action",
+                                                    decision.action.name,
+                                                )
+                                                action_success = await self._execute_low_balance_fallback_action(
+                                                    record_on_chain=decision.should_record_onchain,
+                                                )
+
                                             # Only update scheduler timestamps if action was successful
                                             if action_success:
                                                 self.last_action_at = datetime.now()
@@ -2054,9 +2068,10 @@ class PettAgent:
                 )
 
             elif decision.action == ActionType.SHOWER:
+                self.logger.info("🔁 SHOWER decision remapped to RUB")
                 return await self._execute_action_with_tracking(
-                    "SHOWER",
-                    lambda: client.shower_pet(record_on_chain=record_on_chain),
+                    "RUB",
+                    lambda: client.rub_pet(record_on_chain=record_on_chain),
                     treat_already_clean_as_success=True,
                     skipped_onchain_recording=not record_on_chain,
                 )
@@ -2289,9 +2304,9 @@ class PettAgent:
             return True
 
         if hygiene < self.LOW_THRESHOLD:
-            self.logger.info("Economy mode: hygiene low; showering for free gains")
+            self.logger.info("Economy mode: hygiene low; rubbing for free gains")
             await self._execute_action_with_tracking(
-                "SHOWER", client.shower_pet, treat_already_clean_as_success=True
+                "RUB", client.rub_pet, treat_already_clean_as_success=True
             )
             return True
 
@@ -2970,7 +2985,7 @@ class PettAgent:
     ) -> bool:
         """Execute an action with fallback chain and retry logic.
 
-        Fallback order: Primary -> RUB -> SHOWER -> CONSUMABLES_USE -> Random consumable -> THROWBALL -> SLEEP
+        Fallback order: Primary -> RUB -> CONSUMABLES_USE -> Random consumable -> THROWBALL -> SLEEP
 
         Args:
             client: WebSocket client
@@ -2992,8 +3007,6 @@ class PettAgent:
         # Add fallbacks based on primary action
         if normalized_primary != "RUB":
             fallback_actions.append(("RUB", client.rub_pet, True))
-        if normalized_primary != "SHOWER":
-            fallback_actions.append(("SHOWER", client.shower_pet, True))
         if normalized_primary != "CONSUMABLES_USE":
             # Try to use owned consumables
             async def try_use_consumable() -> bool:
@@ -3328,67 +3341,58 @@ class PettAgent:
     async def _execute_low_balance_fallback_action(
         self, *, record_on_chain: bool
     ) -> bool:
-        """Run free actions when consumable purchase/use fails due to low balance."""
+        """Run free actions when consumable purchase/use fails due to low balance.
+
+        The goal is to **always** execute a real action that the server
+        acknowledges so that an on-chain tx can be recorded.  Actions that
+        produce a server error (e.g. "already clean") are NOT treated as
+        success here — they don't generate a verification payload and
+        therefore cannot be recorded on-chain.  We keep trying the next
+        candidate until one truly succeeds.
+        """
         if not self.websocket_client:
             return False
 
         client = self.websocket_client
-        fallback_actions: List[Tuple[str, Callable[[], Awaitable[bool]], bool]] = []
 
-        # THROWBALL is preferred to farm tokens when any core stat allows it.
-        can_throwball = True
-        try:
-            pet_data = client.get_pet_data() or {}
-            stats = pet_data.get("stats", {}) if isinstance(pet_data, dict) else {}
-            health = self._to_float(stats.get("health", 0))
-            hunger = self._to_float(stats.get("hunger", 0))
-            energy = self._to_float(stats.get("energy", 0))
-            can_throwball = any(value >= 15.0 for value in (health, hunger, energy))
-        except Exception:
-            can_throwball = True
+        # Build the ordered list of free fallback actions.
+        # We always include all of them; the server will reject if stats are
+        # too low for a given action and we simply move on to the next one.
+        fallback_actions: List[Tuple[str, Callable[[], Awaitable[bool]]]] = [
+            (
+                "THROWBALL",
+                lambda: client.throw_ball(record_on_chain=record_on_chain),
+            ),
+            (
+                "RUB",
+                lambda: client.rub_pet(record_on_chain=record_on_chain),
+            ),
+            (
+                "SLEEP",
+                lambda: client.sleep_pet(record_on_chain=record_on_chain),
+            ),
+        ]
 
-        if can_throwball:
-            fallback_actions.append(
-                (
-                    "THROWBALL",
-                    lambda: client.throw_ball(record_on_chain=record_on_chain),
-                    False,
-                )
-            )
-        else:
-            self.logger.info(
-                "Low-balance fallback: skipping THROWBALL because core stats are too low"
-            )
-
-        fallback_actions.extend(
-            [
-                (
-                    "SHOWER",
-                    lambda: client.shower_pet(record_on_chain=record_on_chain),
-                    True,
-                ),
-                ("RUB", lambda: client.rub_pet(record_on_chain=record_on_chain), True),
-                (
-                    "SLEEP",
-                    lambda: client.sleep_pet(record_on_chain=record_on_chain),
-                    False,
-                ),
-            ]
-        )
-
-        for action_name, action_callable, allow_clean in fallback_actions:
+        for action_name, action_callable in fallback_actions:
             self.logger.info("🔁 Low-balance fallback: trying %s", action_name)
+            # Never treat "already clean" as success in the fallback path —
+            # an "already clean" response has no verification payload, so it
+            # cannot produce an on-chain tx.  We need a *real* success.
             success = await self._execute_action_with_tracking(
                 action_name,
                 action_callable,
-                treat_already_clean_as_success=allow_clean,
+                treat_already_clean_as_success=False,
                 skipped_onchain_recording=not record_on_chain,
             )
             if success:
                 self.logger.info("✅ Low-balance fallback action succeeded: %s", action_name)
                 return True
+            self.logger.info(
+                "🔁 Low-balance fallback: %s did not succeed, trying next",
+                action_name,
+            )
 
-        self.logger.warning("⚠️ Low-balance fallback actions failed")
+        self.logger.warning("⚠️ All low-balance fallback actions failed")
         return False
 
     def _needs_structured_actions(self) -> bool:
@@ -3450,7 +3454,7 @@ class PettAgent:
         happiness_deficit = max(0.0, 100.0 - happiness)
 
         if hygiene_deficit > 50.0:
-            add_candidate(hygiene_deficit + 10.0, "SHOWER", client.shower_pet, True)
+            add_candidate(hygiene_deficit + 10.0, "RUB", client.rub_pet, True)
 
             if happiness_deficit > 6.0:
                 add_candidate(happiness_deficit, "RUB", client.rub_pet, False)
@@ -3491,7 +3495,7 @@ class PettAgent:
     async def _random_action(self, client: PettWebSocketClient) -> None:
         actions = [
             (client.rub_pet, "rub"),
-            (client.shower_pet, "shower"),
+            (client.rub_pet, "rub"),
             (client.throw_ball, "throw_ball"),
             (client.throw_ball, "throw_ball"),
             (client.throw_ball, "throw_ball"),
@@ -3857,17 +3861,20 @@ class PettAgent:
 
         if random.random() < 0.05:
             self.logger.info(
-                "🎲 Random variance: performing random_action instead of shower"
+                "🎲 Random variance: performing random_action instead of rub"
             )
             await self._random_action(client)
             return
 
-        # Priority 1: low hygiene -> shower
+        # Priority 1: low hygiene -> rub
         if hygiene < self.LOW_THRESHOLD:
             # Small randomness to occasionally do a different engaging action
-            self.logger.info("🚿 Low hygiene detected; showering pet")
+            self.logger.info("🧼 Low hygiene detected; rubbing pet")
             success = await self._execute_action_with_fallbacks(
-                client, "SHOWER", client.shower_pet
+                client,
+                "RUB",
+                client.rub_pet,
+                treat_already_clean_as_success=True,
             )
             if success:
                 return

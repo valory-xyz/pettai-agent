@@ -52,11 +52,11 @@ async def test_pet_data_ui():
 
     # Start web server
     print("🌐 Starting web server...")
-    await olas.start_web_server(port=8717)  # Use different port to avoid conflicts
+    await olas.start_web_server()
 
     print("✅ Enhanced UI is now running!")
-    print("🎛️  Open your browser to: http://localhost:8717/")
-    print("🏥 Health check: http://localhost:8717/healthcheck")
+    print("🎛️  Open your browser to: http://localhost:8716/")
+    print("🏥 Health check: http://localhost:8716/healthcheck")
     print("\n📋 Pet data displayed:")
     print(f"   Name: {olas.pet_name}")
     print(f"   ID: {olas.pet_id}")

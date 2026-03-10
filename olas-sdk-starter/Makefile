@@ -2,6 +2,12 @@ OPEN_AEA_REPO_PATH := "${OPEN_AEA_REPO_PATH}"
 DEPLOYMENT_TYPE := "${DEPLOYMENT_TYPE}"
 SERVICE_ID := "${SERVICE_ID}"
 PLATFORM_STR := $(shell uname)
+# Prefer python3 on Linux where "python" is often not installed (override with: make PYTHON=python ...)
+PYTHON ?= $(shell command -v python3 >/dev/null 2>&1 && echo python3 || echo python)
+# Project venv: avoids PEP 668 "externally-managed-environment" on Debian/Ubuntu
+VENV_DIR := .venv
+VENV_PYTHON := $(VENV_DIR)/bin/python
+VENV_PATH := $(CURDIR)/$(VENV_DIR)/bin
 
 # Binary build metadata
 RUNNER_NAME := agent_runner_bin
@@ -115,7 +121,7 @@ common-checks-2:
 .PHONY: all-checks
 all-checks: clean security generators common-checks-1 common-checks-2
 
-v := $(shell pip -V | grep virtualenvs)
+v := $(shell $(PYTHON) -m pip -V 2>/dev/null | grep virtualenvs)
 
 # Pipenv bootstrap helper
 .PHONY: new_env
@@ -158,22 +164,23 @@ protolint_install_darwin:
 protolint_install_win:
 	powershell -command '$$env:GO111MODULE="on"; go install github.com/yoheimuta/protolint/cmd/protolint@v0.27.0'
 
-# Install Python deps necessary for builds
+# Install Python deps necessary for builds (uses project .venv to avoid PEP 668 system Python)
 .PHONY: install-deps
 install-deps: clean-cache
-	python -m pip install --upgrade pip setuptools wheel
-	python -m pip install -r requirements.txt
-	python -m pip install open-autonomy==0.19.11 pyinstaller==6.4.0
-	python -m pip install -U "setuptools<70.0.0" ## there is an issue with pyinstaller, so stick setuptools
+	@if [ ! -f $(VENV_PYTHON) ]; then rm -rf $(VENV_DIR) && $(PYTHON) -m venv $(VENV_DIR); fi
+	$(VENV_PYTHON) -m pip install --upgrade pip setuptools wheel
+	$(VENV_PYTHON) -m pip install -r requirements.txt
+	$(VENV_PYTHON) -m pip install open-autonomy==0.19.11 pyinstaller==6.4.0
+	$(VENV_PYTHON) -m pip install -U "setuptools<70.0.0" ## there is an issue with pyinstaller, so stick setuptools
 
 # Write the agent IPFS hash to hash_id
 $(HASH_FILE): $(PACKAGES_FILE)
-	@python -c "import json, pathlib; data=json.load(open('$(PACKAGES_FILE)', encoding='utf-8')); print(next((value for key,value in data.get('dev', {}).items() if key.startswith('agent/')), ''))" > $(HASH_FILE)
+	@$(PYTHON) -c "import json, pathlib; data=json.load(open('$(PACKAGES_FILE)', encoding='utf-8')); print(next((value for key,value in data.get('dev', {}).items() if key.startswith('agent/')), ''))" > $(HASH_FILE)
 	@cat $(HASH_FILE)
 
 # Write the agent identifier to agent_id
 $(AGENT_ID_FILE): $(PACKAGES_FILE)
-	@python -c "import json, pathlib; data=json.load(open('$(PACKAGES_FILE)', encoding='utf-8')); print(next((key.split('/',1)[1] for key in data.get('dev', {}).keys() if key.startswith('agent/')), ''))" > $(AGENT_ID_FILE)
+	@$(PYTHON) -c "import json, pathlib; data=json.load(open('$(PACKAGES_FILE)', encoding='utf-8')); print(next((key.split('/',1)[1] for key in data.get('dev', {}).keys() if key.startswith('agent/')), ''))" > $(AGENT_ID_FILE)
 	@cat $(AGENT_ID_FILE)
 
 # Fetch the agent package into ./agent
@@ -191,11 +198,11 @@ $(AGENT_DIR)/ethereum_private_key.txt: $(AGENT_DIR)
 
 # Zip archive for release uploads
 agent.zip: $(AGENT_DIR)
-	python -c "import shutil; shutil.make_archive('agent', 'zip', root_dir='.', base_dir='agent')"
+	$(PYTHON) -c "import shutil; shutil.make_archive('agent', 'zip', root_dir='.', base_dir='agent')"
 
 # Tarball archive for release uploads
 agent.tar.gz: $(AGENT_DIR)
-	python -c "import shutil; shutil.make_archive('agent', 'gztar', root_dir='.', base_dir='agent')"
+	$(PYTHON) -c "import shutil; shutil.make_archive('agent', 'gztar', root_dir='.', base_dir='agent')"
 
 .PHONY: check-frontend-env
 check-frontend-env:
@@ -214,7 +221,7 @@ build-frontend: check-frontend-env
 # Also, i did hadd setuptools bc the "jaraco" module was not being included in the default PyInstaller hidden imports (unlike it was seen on the https://github.com/valory-xyz/optimus/blob/main/Makefile)
 .PHONY: build-agent-runner
 build-agent-runner: install-deps $(AGENT_DIR) build-frontend
-	$(PYINSTALLER_CMD) \
+	PATH="$(VENV_PATH):$$PATH" $(PYINSTALLER_CMD) \
 	-p . \
 	--collect-data eth_account \
 		--collect-all agent \
@@ -226,7 +233,7 @@ build-agent-runner: install-deps $(AGENT_DIR) build-frontend
 	--hidden-import agent.telegram_bot \
 	--hidden-import agent.olas_interface \
 	--add-data $(FRONTEND_BUILD_DIR):frontend/build \
-	$(shell python $(PYINSTALLER_DEPS_SCRIPT)) \
+	$(shell $(VENV_PYTHON) $(PYINSTALLER_DEPS_SCRIPT)) \
 	--onefile $(PYINSTALLER_ENTRY) \
 	--name $(RUNNER_NAME)
 	./$(DIST_PATH) --version
@@ -234,7 +241,7 @@ build-agent-runner: install-deps $(AGENT_DIR) build-frontend
 # macOS build with codesigning. Here we use the -p . flag to include the project root in the PYTHONPATH as well.
 .PHONY: build-agent-runner-mac
 build-agent-runner-mac: install-deps $(AGENT_DIR) build-frontend
-	$(PYINSTALLER_CMD) \
+	PATH="$(VENV_PATH):$$PATH" $(PYINSTALLER_CMD) \
 	-p . \
 	--collect-data eth_account \
 		--collect-all agent \
@@ -245,13 +252,33 @@ build-agent-runner-mac: install-deps $(AGENT_DIR) build-frontend
 	--hidden-import agent.pett_tools \
 	--hidden-import agent.telegram_bot \
 	--add-data $(FRONTEND_BUILD_DIR):frontend/build \
-	$(shell python $(PYINSTALLER_DEPS_SCRIPT)) \
+	$(shell $(VENV_PYTHON) $(PYINSTALLER_DEPS_SCRIPT)) \
 	--onefile $(PYINSTALLER_ENTRY) \
 	--codesign-identity "${SIGN_ID}" \
+	--name $(RUNNER_NAME)
+	./$(DIST_PATH) --version
+
+# Native Linux build (run on a Linux host; no Docker). Same as build-agent-runner.
+.PHONY: build-agent-runner-linux-native
+build-agent-runner-linux-native: install-deps $(AGENT_DIR) build-frontend
+	PATH="$(VENV_PATH):$$PATH" $(PYINSTALLER_CMD) \
+	-p . \
+	--collect-data eth_account \
+		--collect-all agent \
+		--collect-all setuptools \
+	--hidden-import agent.olas_interface \
+	--hidden-import agent.pett_agent \
+	--hidden-import agent.decision_engine \
+	--hidden-import agent.pett_tools \
+	--hidden-import agent.telegram_bot \
+	--hidden-import agent.olas_interface \
+	--add-data $(FRONTEND_BUILD_DIR):frontend/build \
+	$(shell $(VENV_PYTHON) $(PYINSTALLER_DEPS_SCRIPT)) \
+	--onefile $(PYINSTALLER_ENTRY) \
 	--name $(RUNNER_NAME)
 	./$(DIST_PATH) --version
 
 # Sanity check the created binary
 .PHONY: check-agent-runner
 check-agent-runner:
-	python check_agent_runner.py
+	$(VENV_PYTHON) check_agent_runner.py

@@ -109,7 +109,7 @@ class OlasInterface:
         self.app: Optional[web.Application] = None
         self.runner: Optional[web.AppRunner] = None
         self.site: Optional[web.TCPSite] = None
-        self.web_port: int = 8716  # Default port, updated when server starts
+        self.web_port: int = 8716  # Fixed port (Olas SDK / deployment contract)
 
         # Environment variables (Olas SDK requirement)
         self.env_vars: Dict[str, str] = self._load_environment_variables()
@@ -1813,12 +1813,10 @@ class OlasInterface:
             self.logger.error(f"❌ React build failed: {e}")
             return False
 
-    async def start_web_server(
-        self, port: int = 8716, enable_react: bool = True
-    ) -> None:
+    async def start_web_server(self, enable_react: bool = True) -> None:
         """Start web server for health checks and UI (Olas SDK requirement)."""
         try:
-            # Store the actual port being used
+            port = 8716  # Fixed port (Olas SDK / deployment contract)
             self.web_port = port
             self.app = web.Application()
 

@@ -11,11 +11,13 @@ ifeq ($(OS),Windows_NT)
     VENV_PYTHON := $(VENV_DIR)/Scripts/python
     VENV_PATH := $(CURDIR)/$(VENV_DIR)/Scripts
     ADD_DATA_SEP := ;
+    PATH_SEP := ;
     EXE_EXT := .exe
 else
     VENV_PYTHON := $(VENV_DIR)/bin/python
     VENV_PATH := $(CURDIR)/$(VENV_DIR)/bin
     ADD_DATA_SEP := :
+    PATH_SEP := :
     EXE_EXT :=
 endif
 
@@ -231,7 +233,7 @@ build-frontend: check-frontend-env
 # Also, i did hadd setuptools bc the "jaraco" module was not being included in the default PyInstaller hidden imports (unlike it was seen on the https://github.com/valory-xyz/optimus/blob/main/Makefile)
 .PHONY: build-agent-runner
 build-agent-runner: install-deps $(AGENT_DIR) build-frontend
-	PATH="$(VENV_PATH):$$PATH" $(PYINSTALLER_CMD) \
+	PATH="$(VENV_PATH)$(PATH_SEP)$$PATH" $(PYINSTALLER_CMD) \
 	-p . \
 	--collect-data eth_account \
 		--collect-all agent \
@@ -251,7 +253,7 @@ build-agent-runner: install-deps $(AGENT_DIR) build-frontend
 # macOS build with codesigning. Here we use the -p . flag to include the project root in the PYTHONPATH as well.
 .PHONY: build-agent-runner-mac
 build-agent-runner-mac: install-deps $(AGENT_DIR) build-frontend
-	PATH="$(VENV_PATH):$$PATH" $(PYINSTALLER_CMD) \
+	PATH="$(VENV_PATH)$(PATH_SEP)$$PATH" $(PYINSTALLER_CMD) \
 	-p . \
 	--collect-data eth_account \
 		--collect-all agent \
@@ -271,7 +273,7 @@ build-agent-runner-mac: install-deps $(AGENT_DIR) build-frontend
 # Native Linux build (run on a Linux host; no Docker). Same as build-agent-runner.
 .PHONY: build-agent-runner-linux-native
 build-agent-runner-linux-native: install-deps $(AGENT_DIR) build-frontend
-	PATH="$(VENV_PATH):$$PATH" $(PYINSTALLER_CMD) \
+	PATH="$(VENV_PATH)$(PATH_SEP)$$PATH" $(PYINSTALLER_CMD) \
 	-p . \
 	--collect-data eth_account \
 		--collect-all agent \

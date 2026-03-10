@@ -6,8 +6,18 @@ PLATFORM_STR := $(shell uname)
 PYTHON ?= $(shell command -v python3 >/dev/null 2>&1 && echo python3 || echo python)
 # Project venv: avoids PEP 668 "externally-managed-environment" on Debian/Ubuntu
 VENV_DIR := .venv
-VENV_PYTHON := $(VENV_DIR)/bin/python
-VENV_PATH := $(CURDIR)/$(VENV_DIR)/bin
+# Windows uses Scripts/ instead of bin/ for venv layout
+ifeq ($(OS),Windows_NT)
+    VENV_PYTHON := $(VENV_DIR)/Scripts/python
+    VENV_PATH := $(CURDIR)/$(VENV_DIR)/Scripts
+    ADD_DATA_SEP := ;
+    EXE_EXT := .exe
+else
+    VENV_PYTHON := $(VENV_DIR)/bin/python
+    VENV_PATH := $(CURDIR)/$(VENV_DIR)/bin
+    ADD_DATA_SEP := :
+    EXE_EXT :=
+endif
 
 # Binary build metadata
 RUNNER_NAME := agent_runner_bin
@@ -25,7 +35,7 @@ FRONTEND_DIR := frontend
 FRONTEND_BUILD_DIR := $(FRONTEND_DIR)/build
 FRONTEND_BUILD_CMD := yarn --cwd $(FRONTEND_DIR)
 CHECK_TIMEOUT ?= 30
-CHECK_COMMAND ?= ./dist/$(RUNNER_NAME) --version
+CHECK_COMMAND ?= ./dist/$(RUNNER_NAME)$(EXE_EXT) --version
 CHECK_SEARCH_STRING ?= Pett Agent Runner
 
 export CHECK_TIMEOUT
@@ -232,11 +242,11 @@ build-agent-runner: install-deps $(AGENT_DIR) build-frontend
 	--hidden-import agent.pett_tools \
 	--hidden-import agent.telegram_bot \
 	--hidden-import agent.olas_interface \
-	--add-data $(FRONTEND_BUILD_DIR):frontend/build \
+	--add-data "$(FRONTEND_BUILD_DIR)$(ADD_DATA_SEP)frontend/build" \
 	$(shell $(VENV_PYTHON) $(PYINSTALLER_DEPS_SCRIPT)) \
 	--onefile $(PYINSTALLER_ENTRY) \
 	--name $(RUNNER_NAME)
-	./$(DIST_PATH) --version
+	./$(DIST_PATH)$(EXE_EXT) --version
 
 # macOS build with codesigning. Here we use the -p . flag to include the project root in the PYTHONPATH as well.
 .PHONY: build-agent-runner-mac
@@ -251,7 +261,7 @@ build-agent-runner-mac: install-deps $(AGENT_DIR) build-frontend
 	--hidden-import agent.decision_engine \
 	--hidden-import agent.pett_tools \
 	--hidden-import agent.telegram_bot \
-	--add-data $(FRONTEND_BUILD_DIR):frontend/build \
+	--add-data "$(FRONTEND_BUILD_DIR)$(ADD_DATA_SEP)frontend/build" \
 	$(shell $(VENV_PYTHON) $(PYINSTALLER_DEPS_SCRIPT)) \
 	--onefile $(PYINSTALLER_ENTRY) \
 	--codesign-identity "${SIGN_ID}" \
@@ -272,7 +282,7 @@ build-agent-runner-linux-native: install-deps $(AGENT_DIR) build-frontend
 	--hidden-import agent.pett_tools \
 	--hidden-import agent.telegram_bot \
 	--hidden-import agent.olas_interface \
-	--add-data $(FRONTEND_BUILD_DIR):frontend/build \
+	--add-data "$(FRONTEND_BUILD_DIR)$(ADD_DATA_SEP)frontend/build" \
 	$(shell $(VENV_PYTHON) $(PYINSTALLER_DEPS_SCRIPT)) \
 	--onefile $(PYINSTALLER_ENTRY) \
 	--name $(RUNNER_NAME)

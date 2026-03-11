@@ -2,12 +2,21 @@ OPEN_AEA_REPO_PATH := "${OPEN_AEA_REPO_PATH}"
 DEPLOYMENT_TYPE := "${DEPLOYMENT_TYPE}"
 SERVICE_ID := "${SERVICE_ID}"
 PLATFORM_STR := $(shell uname)
-# Prefer python3 on Linux where "python" is often not installed (override with: make PYTHON=python ...)
-PYTHON ?= $(shell command -v python3 >/dev/null 2>&1 && echo python3 || echo python)
+
 # Project venv: avoids PEP 668 "externally-managed-environment" on Debian/Ubuntu
 VENV_DIR := .venv
-VENV_PYTHON := $(VENV_DIR)/bin/python
-VENV_PATH := $(CURDIR)/$(VENV_DIR)/bin
+ifeq ($(OS),Windows_NT)
+    PLATFORM_STR := Windows
+    PYTHON ?= python
+    VENV_PYTHON := $(VENV_DIR)/Scripts/python.exe
+    VENV_PATH := $(CURDIR)/$(VENV_DIR)/Scripts
+else
+	# Prefer python3 on Linux where "python" is often not installed (override with: make PYTHON=python ...)
+    PLATFORM_STR := $(shell uname)
+    PYTHON ?= $(shell command -v python3 >/dev/null 2>&1 && echo python3 || echo python)
+    VENV_PYTHON := $(VENV_DIR)/bin/python
+    VENV_PATH := $(CURDIR)/$(VENV_DIR)/bin
+endif
 
 # Binary build metadata
 RUNNER_NAME := agent_runner_bin
@@ -15,7 +24,7 @@ DIST_PATH := dist/$(RUNNER_NAME)
 PYINSTALLER_ENTRY := pyinstaller/agent_runner_entry.py
 PYINSTALLER_DEPS_SCRIPT := get_pyinstaller_dependencies.py
 PYINSTALLER_BIN := $(RUNNER_NAME)
-PYINSTALLER_CMD := pyinstaller
+PYINSTALLER_CMD := $(VENV_PYTHON) -m PyInstaller
 AUTONOMY_CMD := autonomy
 PACKAGES_FILE := packages/packages.json
 HASH_FILE := hash_id

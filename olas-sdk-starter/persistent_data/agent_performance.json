@@ -1,11 +1,11 @@
 {
-  "timestamp": 1772661845,
+  "timestamp": 1773246847,
   "metrics": [
     {
       "name": "Pet Name",
       "is_primary": false,
       "description": "Latest pet name received from Pett servers.",
-      "value": "CrazyDev23"
+      "value": "MyPett961128"
     },
     {
       "name": "Pet Status",

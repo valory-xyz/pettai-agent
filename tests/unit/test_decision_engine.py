@@ -14,7 +14,7 @@ import random
 import sys
 import os
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import pytest
 
@@ -743,3 +743,573 @@ class TestFailureTracking:
         self.maker.record_action_failure(ActionType.THROWBALL, {})
         self.maker.clear_all_failures()
         assert not self.maker.is_action_blocked(ActionType.THROWBALL)
+
+
+# ---------------------------------------------------------------------------
+# 9. Always performs an action every 7 minutes — no stat combination skips
+# ---------------------------------------------------------------------------
+
+class TestAlwaysActsEvery7Min:
+    """
+    Guarantee: the decision engine ALWAYS returns a real, executable action
+    (not NONE) for any living pet, regardless of stat values, sleeping state,
+    blocked actions, consumable inventory, or token balance.
+
+    This ensures the 7-minute action loop always has work to do.
+    """
+
+    def setup_method(self):
+        self.maker = PetDecisionMaker()
+
+    # -- All stats at extremes --
+
+    def test_all_stats_100_still_acts(self):
+        """Perfect pet with all stats maxed must still pick an action."""
+        action, d = _decide(
+            self.maker,
+            hunger=100, health=100, energy=100, happiness=100, hygiene=100,
+            tokens=0, consumables=[],
+        )
+        assert action != ActionType.NONE
+        assert d.reason  # must have a reason
+
+    def test_all_stats_0_still_acts(self):
+        """Dying pet with all stats at 0 must still pick an action."""
+        action, _ = _decide(
+            self.maker,
+            hunger=0, health=0, energy=0, happiness=0, hygiene=0,
+            tokens=0, consumables=[],
+        )
+        assert action != ActionType.NONE
+
+    def test_all_stats_at_critical_boundary(self):
+        """All stats exactly at critical threshold (20) must still act."""
+        action, _ = _decide(
+            self.maker,
+            hunger=20, health=20, energy=20, happiness=20, hygiene=20,
+            tokens=0, consumables=[],
+        )
+        assert action != ActionType.NONE
+
+    # -- Sleeping pet always gets a decision --
+
+    def test_sleeping_low_energy_still_decides(self):
+        """Sleeping pet with low energy should return SLEEP (stay/wake), not NONE."""
+        action, _ = _decide(
+            self.maker,
+            hunger=50, health=50, energy=30, happiness=50, hygiene=50,
+            sleeping=True,
+        )
+        assert action != ActionType.NONE
+
+    def test_sleeping_high_energy_still_decides(self):
+        """Sleeping pet with high energy (>= 65) should wake and pick an action."""
+        action, _ = _decide(
+            self.maker,
+            hunger=50, health=50, energy=80, happiness=50, hygiene=50,
+            sleeping=True,
+        )
+        assert action != ActionType.NONE
+
+    def test_sleeping_zero_energy_no_onchain_needed(self):
+        """Sleeping pet at 0 energy, all epoch actions done, still decides."""
+        action, _ = _decide(
+            self.maker,
+            hunger=50, health=50, energy=0, happiness=50, hygiene=50,
+            sleeping=True, epoch_actions=9,
+        )
+        assert action != ActionType.NONE
+
+    def test_sleeping_zero_energy_needs_onchain(self):
+        """Sleeping pet at 0 energy needing on-chain → wake+resleep."""
+        action, d = _decide(
+            self.maker,
+            hunger=50, health=50, energy=0, happiness=50, hygiene=50,
+            sleeping=True, epoch_actions=0,
+        )
+        assert action == ActionType.SLEEP
+        assert d.params.get("wake_first") is True
+        assert d.should_record_onchain is True
+
+    def test_sleeping_critical_stats_wakes_for_survival(self):
+        """Sleeping pet with critical non-energy stats should wake for survival."""
+        action, d = _decide(
+            self.maker,
+            hunger=5, health=5, energy=10, happiness=5, hygiene=5,
+            sleeping=True, consumables=["BURGER"],
+        )
+        # Should either stay asleep (energy critical) or wake for survival
+        assert action != ActionType.NONE
+
+    # -- All free actions blocked --
+
+    def test_all_actions_blocked_still_acts(self):
+        """Even with THROWBALL and RUB blocked, engine picks SHOWER or SLEEP."""
+        self.maker.record_action_failure(ActionType.THROWBALL, {})
+        self.maker.record_action_failure(ActionType.RUB, {})
+        action, _ = _decide(
+            self.maker,
+            hunger=80, health=80, energy=60, happiness=80, hygiene=50,
+            tokens=0, consumables=[],
+        )
+        assert action != ActionType.NONE
+        assert action in (ActionType.SHOWER, ActionType.SLEEP)
+
+    def test_all_blocked_high_hygiene_high_energy(self):
+        """THROWBALL+RUB blocked, hygiene>=75 (no shower), energy>50 (no sleep score).
+        Fallback SLEEP must kick in."""
+        self.maker.record_action_failure(ActionType.THROWBALL, {})
+        self.maker.record_action_failure(ActionType.RUB, {})
+        action, _ = _decide(
+            self.maker,
+            hunger=80, health=80, energy=80, happiness=80, hygiene=80,
+            tokens=0, consumables=[],
+        )
+        assert action != ActionType.NONE
+        # Fallback SLEEP is the only option
+        assert action == ActionType.SLEEP
+
+    # -- No tokens, no consumables, various stats --
+
+    def test_broke_pet_low_hunger_still_acts(self):
+        """Low hunger, no food, no tokens → still picks a free action."""
+        action, _ = _decide(
+            self.maker,
+            hunger=15, health=50, energy=50, happiness=50, hygiene=50,
+            tokens=0, consumables=[],
+        )
+        assert action != ActionType.NONE
+
+    def test_broke_pet_all_critical_still_acts(self):
+        """All stats critical, no resources → picks SLEEP (free action)."""
+        action, _ = _decide(
+            self.maker,
+            hunger=10, health=10, energy=10, happiness=10, hygiene=10,
+            tokens=0, consumables=[],
+        )
+        assert action != ActionType.NONE
+
+    # -- Exhaustive: every sleeping + stat combination still returns an action --
+
+    def test_sleeping_never_none_grid(self):
+        """Grid of energy levels while sleeping — must always return an action."""
+        maker = PetDecisionMaker()
+        for energy in [0, 5, 10, 20, 30, 50, 64, 65, 80, 100]:
+            for hunger in [0, 20, 50, 100]:
+                ctx = _ctx(
+                    hunger=hunger, health=50, energy=energy,
+                    happiness=50, hygiene=50, sleeping=True,
+                )
+                d = maker.decide(ctx)
+                assert d.action != ActionType.NONE, (
+                    f"Got NONE for sleeping pet: energy={energy}, hunger={hunger}"
+                )
+
+    # -- on-chain recording guarantee --
+
+    def test_onchain_always_possible(self):
+        """When epoch actions < 9, decision always sets should_record_onchain=True."""
+        for energy in [0, 20, 50, 80, 100]:
+            ctx = _ctx(
+                hunger=50, health=50, energy=energy,
+                happiness=50, hygiene=50, epoch_actions=0,
+            )
+            d = self.maker.decide(ctx)
+            assert d.action != ActionType.NONE
+            assert d.should_record_onchain is True, (
+                f"energy={energy}: should_record_onchain should be True "
+                f"when epoch_actions=0"
+            )
+
+    def test_stay_asleep_always_records_onchain(self):
+        """stay_asleep=True always does wake+resleep with on-chain record."""
+        ctx = _ctx(
+            hunger=50, health=50, energy=30, happiness=50, hygiene=50,
+            sleeping=True, epoch_actions=9,  # even when epoch is "done"
+        )
+        d = self.maker.decide(ctx)
+        assert d.action == ActionType.SLEEP
+        assert d.params.get("stay_asleep") is True
+        assert d.should_record_onchain is True  # always on-chain
+
+    # -- Large random sweep including sleeping --
+
+    def test_random_1000_including_sleeping_never_none(self):
+        """1000 random contexts (some sleeping) must all produce a real action."""
+        rng = random.Random(123)
+        maker = PetDecisionMaker()
+        for _ in range(1000):
+            ctx = _ctx(
+                hunger=rng.uniform(0, 100),
+                health=rng.uniform(0, 100),
+                energy=rng.uniform(0, 100),
+                happiness=rng.uniform(0, 100),
+                hygiene=rng.uniform(0, 100),
+                sleeping=rng.random() < 0.3,  # 30% chance sleeping
+                tokens=rng.uniform(0, 500),
+                consumables=rng.sample(
+                    ["BURGER", "SMALL_POTION", "ENERGIZER", "SUSHI", "LARGE_POTION"],
+                    k=rng.randint(0, 3),
+                ),
+                epoch_actions=rng.randint(0, 12),
+            )
+            d = maker.decide(ctx)
+            assert d.action != ActionType.NONE, (
+                f"Got NONE for living pet: "
+                f"sleeping={ctx.is_sleeping}, "
+                f"energy={ctx.stats.energy:.1f}, "
+                f"hunger={ctx.stats.hunger:.1f}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# 10. Time-based simulation: on-chain action recorded every 7-minute tick
+# ---------------------------------------------------------------------------
+
+@dataclass
+class OnchainSimResult:
+    """Result of an on-chain guarantee simulation."""
+    ticks: int
+    survived: bool
+    death_tick: Optional[int]
+    # Every tick's record: (tick, action_name, should_record_onchain, is_sleeping)
+    tick_log: List[Dict[str, Any]]
+    # Ticks where should_record_onchain was False (should be empty)
+    offchain_ticks: List[int]
+    # Ticks where action was NONE (should be empty for living pet)
+    none_ticks: List[int]
+    action_counts: Dict[str, int]
+    min_stats: Dict[str, float]
+
+
+def simulate_onchain(
+    hours: float = 48,
+    initial_stats: Optional[PetStats] = None,
+    initial_consumables: Optional[List[str]] = None,
+    initial_tokens: float = 200.0,
+    seed: int = 42,
+) -> OnchainSimResult:
+    """
+    Simulate the pet and assert on-chain recording every 7-minute tick.
+
+    Unlike the basic simulate(), this tracks:
+      - Whether every tick produces a non-NONE action
+      - Whether every tick has should_record_onchain=True
+      - Proper stay_asleep handling (wake+resleep counts as action)
+    """
+    rng = random.Random(seed)
+    maker = PetDecisionMaker()
+
+    stats = initial_stats or PetStats(
+        hunger=80, health=90, energy=70, happiness=75, hygiene=60
+    )
+    consumables = list(initial_consumables or ["BURGER", "BURGER", "SMALL_POTION"])
+    tokens = initial_tokens
+    is_sleeping = False
+
+    total_ticks = int((hours * 60) / TICK_MINUTES)
+    action_counts: Dict[str, int] = {}
+    min_stats = stats.to_dict()
+    death_tick = None
+    tick_log: List[Dict[str, Any]] = []
+    offchain_ticks: List[int] = []
+    none_ticks: List[int] = []
+
+    for tick in range(total_ticks):
+        # --- Decay between ticks ---
+        if is_sleeping:
+            stats = _apply_sleep_recovery(stats, TICK_MINUTES)
+        else:
+            stats = _apply_decay(stats, TICK_MINUTES)
+
+        # Track minimums
+        for k, v in stats.to_dict().items():
+            if v < min_stats[k]:
+                min_stats[k] = v
+
+        # --- Check death (all stats 0) ---
+        if stats.is_all_zero():
+            death_tick = tick
+            return OnchainSimResult(
+                ticks=tick,
+                survived=False,
+                death_tick=death_tick,
+                tick_log=tick_log,
+                offchain_ticks=offchain_ticks,
+                none_ticks=none_ticks,
+                action_counts=action_counts,
+                min_stats=min_stats,
+            )
+
+        # --- Build context and decide ---
+        ctx = PetContext(
+            stats=stats,
+            is_sleeping=is_sleeping,
+            token_balance=tokens,
+            owned_consumables=list(consumables),
+            actions_recorded_this_epoch=tick % 9,
+        )
+        decision = maker.decide(ctx)
+        action = decision.action
+
+        # --- Record tick data ---
+        tick_record = {
+            "tick": tick,
+            "action": action.name,
+            "should_record_onchain": decision.should_record_onchain,
+            "is_sleeping": is_sleeping,
+            "stay_asleep": decision.params.get("stay_asleep", False),
+            "wake_first": decision.params.get("wake_first", False),
+            "stats": stats.to_dict(),
+        }
+        tick_log.append(tick_record)
+
+        if action == ActionType.NONE:
+            none_ticks.append(tick)
+        if not decision.should_record_onchain:
+            offchain_ticks.append(tick)
+
+        # Track action counts
+        name = action.name
+        action_counts[name] = action_counts.get(name, 0) + 1
+
+        # --- Handle sleep toggle (mirrors _execute_decision logic) ---
+        if action == ActionType.SLEEP:
+            if decision.params.get("stay_asleep"):
+                # In production: wake+resleep for on-chain record, end sleeping
+                is_sleeping = False
+                is_sleeping = True  # re-sleep
+            elif decision.params.get("wake_first"):
+                is_sleeping = False
+                is_sleeping = True
+            else:
+                is_sleeping = not is_sleeping
+        else:
+            if is_sleeping:
+                is_sleeping = False
+
+        # --- Apply action effects ---
+        stats = _apply_action_effects(action, stats, decision.params)
+
+        # --- Simulate consumable usage ---
+        if action == ActionType.CONSUMABLES_USE:
+            cid = decision.params.get("consumable_id", "").upper()
+            if cid in [c.upper() for c in consumables]:
+                for i, c in enumerate(consumables):
+                    if c.upper() == cid:
+                        consumables.pop(i)
+                        break
+            elif "auto_buy" in decision.params.get("action", ""):
+                tokens = max(0, tokens - 50)
+        elif action == ActionType.CONSUMABLES_BUY:
+            cid = decision.params.get("consumable_id", "BURGER")
+            consumables.append(cid)
+            tokens = max(0, tokens - 50)
+
+        # --- Simulate token earnings ---
+        if action == ActionType.THROWBALL and rng.random() < 0.6:
+            earned = rng.uniform(1, 2)
+            tokens += earned
+        elif action == ActionType.SHOWER:
+            earned = rng.uniform(0.5, 2.0)
+            tokens += earned
+
+        # --- Replenish consumable inventory periodically ---
+        if tick % 60 == 0 and tick > 0 and tokens > 150:
+            consumables.extend(["BURGER", "SMALL_POTION"])
+            tokens -= 100
+
+    return OnchainSimResult(
+        ticks=total_ticks,
+        survived=True,
+        death_tick=None,
+        tick_log=tick_log,
+        offchain_ticks=offchain_ticks,
+        none_ticks=none_ticks,
+        action_counts=action_counts,
+        min_stats=min_stats,
+    )
+
+
+class TestAlwaysOnchainEvery7Min:
+    """
+    Time-based simulations that verify EVERY 7-minute tick produces a real
+    on-chain action across many different starting stat combinations.
+    """
+
+    def _assert_all_onchain(self, result: OnchainSimResult, label: str):
+        """Common assertions for every simulation."""
+        assert result.survived, (
+            f"[{label}] Pet died at tick {result.death_tick}! "
+            f"Min stats: {result.min_stats}"
+        )
+        assert result.none_ticks == [], (
+            f"[{label}] Got NONE action at ticks: {result.none_ticks[:10]}... "
+            f"(total {len(result.none_ticks)}/{result.ticks})"
+        )
+        assert result.offchain_ticks == [], (
+            f"[{label}] Off-chain (not recorded) at ticks: "
+            f"{result.offchain_ticks[:10]}... "
+            f"(total {len(result.offchain_ticks)}/{result.ticks})"
+        )
+
+    # -- Standard 48h runs with different starting stats --
+
+    def test_48h_default_start_all_onchain(self):
+        result = simulate_onchain(hours=48)
+        self._assert_all_onchain(result, "default")
+
+    def test_48h_all_stats_100(self):
+        result = simulate_onchain(
+            hours=48,
+            initial_stats=PetStats(
+                hunger=100, health=100, energy=100, happiness=100, hygiene=100
+            ),
+            initial_consumables=[],
+            initial_tokens=0,
+        )
+        self._assert_all_onchain(result, "all-100")
+
+    def test_48h_all_stats_50(self):
+        result = simulate_onchain(
+            hours=48,
+            initial_stats=PetStats(
+                hunger=50, health=50, energy=50, happiness=50, hygiene=50
+            ),
+            initial_consumables=[],
+            initial_tokens=0,
+        )
+        self._assert_all_onchain(result, "all-50")
+
+    def test_48h_all_stats_25(self):
+        result = simulate_onchain(
+            hours=48,
+            initial_stats=PetStats(
+                hunger=25, health=25, energy=25, happiness=25, hygiene=25
+            ),
+            initial_consumables=["BURGER", "BURGER", "SMALL_POTION", "ENERGIZER"],
+            initial_tokens=300,
+        )
+        self._assert_all_onchain(result, "all-25")
+
+    def test_24h_all_stats_5(self):
+        """Near-death start — every tick must still be on-chain."""
+        result = simulate_onchain(
+            hours=24,
+            initial_stats=PetStats(
+                hunger=5, health=5, energy=5, happiness=5, hygiene=5
+            ),
+            initial_consumables=[
+                "BURGER", "BURGER", "BURGER",
+                "SMALL_POTION", "SMALL_POTION",
+                "ENERGIZER", "ENERGIZER",
+            ],
+            initial_tokens=500,
+        )
+        self._assert_all_onchain(result, "all-5")
+
+    def test_48h_no_consumables_no_tokens(self):
+        """Broke pet — only free actions, every tick must still be on-chain."""
+        result = simulate_onchain(
+            hours=48,
+            initial_consumables=[],
+            initial_tokens=0,
+        )
+        self._assert_all_onchain(result, "broke")
+
+    # -- Asymmetric starting stats --
+
+    def test_48h_high_energy_low_everything(self):
+        result = simulate_onchain(
+            hours=48,
+            initial_stats=PetStats(
+                hunger=10, health=10, energy=100, happiness=10, hygiene=10
+            ),
+            initial_consumables=["BURGER", "SMALL_POTION"],
+            initial_tokens=200,
+        )
+        self._assert_all_onchain(result, "high-energy-low-rest")
+
+    def test_48h_low_energy_high_everything(self):
+        result = simulate_onchain(
+            hours=48,
+            initial_stats=PetStats(
+                hunger=90, health=90, energy=5, happiness=90, hygiene=90
+            ),
+            initial_consumables=["ENERGIZER"],
+            initial_tokens=100,
+        )
+        self._assert_all_onchain(result, "low-energy-high-rest")
+
+    def test_48h_only_hygiene_critical(self):
+        result = simulate_onchain(
+            hours=48,
+            initial_stats=PetStats(
+                hunger=80, health=80, energy=80, happiness=80, hygiene=5
+            ),
+            initial_consumables=[],
+            initial_tokens=0,
+        )
+        self._assert_all_onchain(result, "hygiene-critical")
+
+    def test_48h_only_hunger_critical(self):
+        result = simulate_onchain(
+            hours=48,
+            initial_stats=PetStats(
+                hunger=5, health=80, energy=80, happiness=80, hygiene=80
+            ),
+            initial_consumables=["BURGER", "BURGER"],
+            initial_tokens=200,
+        )
+        self._assert_all_onchain(result, "hunger-critical")
+
+    # -- Multiple seeds to catch edge cases --
+
+    def test_10_seeds_all_onchain(self):
+        """10 random seeds x default start — every tick on-chain."""
+        for seed in range(10):
+            result = simulate_onchain(hours=48, seed=seed)
+            self._assert_all_onchain(result, f"seed-{seed}")
+
+    def test_10_seeds_broke_all_onchain(self):
+        """10 random seeds x broke start — every tick on-chain."""
+        for seed in range(10):
+            result = simulate_onchain(
+                hours=48,
+                initial_consumables=[],
+                initial_tokens=0,
+                seed=seed,
+            )
+            self._assert_all_onchain(result, f"broke-seed-{seed}")
+
+    # -- Random starting stats sweep --
+
+    def test_20_random_starting_stats_all_onchain(self):
+        """20 random starting stat combos, each simulated 48h."""
+        rng = random.Random(999)
+        for i in range(20):
+            stats = PetStats(
+                hunger=rng.uniform(0, 100),
+                health=rng.uniform(0, 100),
+                energy=rng.uniform(0, 100),
+                happiness=rng.uniform(0, 100),
+                hygiene=rng.uniform(0, 100),
+            )
+            tokens = rng.uniform(0, 500)
+            consumables = rng.sample(
+                ["BURGER", "SMALL_POTION", "ENERGIZER", "SUSHI", "LARGE_POTION"],
+                k=rng.randint(0, 5),
+            )
+            result = simulate_onchain(
+                hours=48,
+                initial_stats=stats,
+                initial_consumables=consumables,
+                initial_tokens=tokens,
+                seed=i,
+            )
+            self._assert_all_onchain(
+                result,
+                f"random-{i} (h={stats.hunger:.0f} hp={stats.health:.0f} "
+                f"e={stats.energy:.0f} hap={stats.happiness:.0f} "
+                f"hyg={stats.hygiene:.0f})",
+            )

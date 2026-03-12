@@ -555,7 +555,10 @@ class PetDecisionMaker:
 
     def decide(self, context: PetContext) -> ActionDecision:
         stats = context.stats
-        should_record = context.needs_more_onchain_actions
+        # Always record on-chain every 7-minute tick — not just until the
+        # epoch minimum is reached.  This guarantees continuous on-chain
+        # activity regardless of pet stats or epoch progress.
+        should_record = True
 
         self._log_context(context)
         urgency = compute_urgency_scores(stats)
@@ -573,7 +576,16 @@ class PetDecisionMaker:
             )
 
         # --- Sleeping management ---
-        if context.is_sleeping and stats.energy <= 0 and should_record:
+        # Only keep sleeping if other stats are healthy enough.
+        # When health, hunger, or happiness are critical the pet MUST wake
+        # and use consumables (survival mode) instead of continuing to sleep.
+        _other_stats_ok = (
+            stats.health > CRITICAL_THRESHOLD
+            and stats.hunger > CRITICAL_THRESHOLD
+            and stats.happiness > CRITICAL_THRESHOLD
+        )
+
+        if context.is_sleeping and stats.energy <= 0 and should_record and _other_stats_ok:
             return self._finalize(
                 ActionDecision(
                     action=ActionType.SLEEP,
@@ -585,13 +597,13 @@ class PetDecisionMaker:
                 urgency, [], "survival",
             )
 
-        if context.is_sleeping and stats.energy < WAKE_ENERGY_THRESHOLD:
+        if context.is_sleeping and stats.energy < WAKE_ENERGY_THRESHOLD and _other_stats_ok:
             if not stats.is_critical(5.0):
                 return self._finalize(
                     ActionDecision(
                         action=ActionType.SLEEP,
-                        reason=f"Still resting - energy ({stats.energy:.1f}) < {WAKE_ENERGY_THRESHOLD}",
-                        should_record_onchain=should_record,
+                        reason=f"Still resting - energy ({stats.energy:.1f}) < {WAKE_ENERGY_THRESHOLD} - wake+resleep for on-chain record",
+                        should_record_onchain=True,
                         params={"stay_asleep": True},
                         stats_snapshot=stats.to_dict(),
                     ),
@@ -615,63 +627,15 @@ class PetDecisionMaker:
         should_record: bool,
         urgency: Dict[str, float],
     ) -> Optional[ActionDecision]:
-        """If any stat is <= CRITICAL_THRESHOLD, enter survival mode."""
+        """If any stat is <= CRITICAL_THRESHOLD, enter survival mode.
 
-        # Energy critical → SLEEP or CONSUME energizer
-        if stats.energy <= CRITICAL_THRESHOLD:
-            energizer = ConsumableSelector.get_best_energy_item(context.owned_consumables)
-            if energizer:
-                return self._finalize(
-                    ActionDecision(
-                        action=ActionType.CONSUMABLES_USE,
-                        reason=f"SURVIVAL: energy critically low ({stats.energy:.1f}) - using {energizer}",
-                        should_record_onchain=should_record,
-                        params={"consumable_id": energizer, "action": "survival_energy"},
-                        stats_snapshot=stats.to_dict(),
-                    ),
-                    urgency, [], "survival",
-                )
-            # No energizer → SLEEP
-            return self._finalize(
-                ActionDecision(
-                    action=ActionType.SLEEP,
-                    reason=f"SURVIVAL: energy critically low ({stats.energy:.1f}) - sleeping",
-                    should_record_onchain=should_record,
-                    stats_snapshot=stats.to_dict(),
-                ),
-                urgency, [], "survival",
-            )
+        Priority order: health > hunger > energy.
+        Health and hunger don't recover passively — they MUST be addressed
+        with consumables.  Energy recovers by sleeping, so it's last.
+        """
+        can_buy, _ = ActionConditions.can_buy_consumable(context)
 
-        # Hunger critical → CONSUME food
-        if stats.hunger <= CRITICAL_THRESHOLD:
-            food = ConsumableSelector.get_best_food(context.owned_consumables)
-            if food:
-                return self._finalize(
-                    ActionDecision(
-                        action=ActionType.CONSUMABLES_USE,
-                        reason=f"SURVIVAL: hunger critically low ({stats.hunger:.1f}) - feeding {food}",
-                        should_record_onchain=should_record,
-                        params={"consumable_id": food, "action": "survival_hunger"},
-                        stats_snapshot=stats.to_dict(),
-                    ),
-                    urgency, [], "survival",
-                )
-            # No food → try to auto-buy
-            can_buy, _ = ActionConditions.can_buy_consumable(context)
-            if can_buy:
-                food_to_buy = ConsumableSelector.get_best_to_buy_for_hunger()
-                return self._finalize(
-                    ActionDecision(
-                        action=ActionType.CONSUMABLES_USE,
-                        reason=f"SURVIVAL: hunger critically low ({stats.hunger:.1f}) - auto-buying {food_to_buy}",
-                        should_record_onchain=should_record,
-                        params={"consumable_id": food_to_buy, "action": "auto_buy_and_use_critical_consumable"},
-                        stats_snapshot=stats.to_dict(),
-                    ),
-                    urgency, [], "survival",
-                )
-
-        # Health critical → CONSUME potion
+        # --- Health critical (top priority — pet can die) ---
         if stats.health <= CRITICAL_THRESHOLD:
             potion = ConsumableSelector.get_best_health_item(context.owned_consumables)
             if potion:
@@ -685,19 +649,74 @@ class PetDecisionMaker:
                     ),
                     urgency, [], "survival",
                 )
-            can_buy, _ = ActionConditions.can_buy_consumable(context)
-            if can_buy:
-                potion_to_buy = ConsumableSelector.get_best_to_buy_for_health()
+            # No potion owned — try to buy.  Even if the decision engine's
+            # balance threshold says "can't buy", the execution layer
+            # (use_consumable auto-buy / _recover_low_health) may still
+            # succeed with cheaper items.  Always attempt when health is
+            # critical to avoid letting the pet die.
+            potion_to_buy = ConsumableSelector.get_best_to_buy_for_health()
+            return self._finalize(
+                ActionDecision(
+                    action=ActionType.CONSUMABLES_USE,
+                    reason=f"SURVIVAL: health critically low ({stats.health:.1f}) - auto-buying {potion_to_buy}",
+                    should_record_onchain=should_record,
+                    params={"consumable_id": potion_to_buy, "action": "auto_buy_and_use_critical_consumable"},
+                    stats_snapshot=stats.to_dict(),
+                ),
+                urgency, [], "survival",
+            )
+
+        # --- Hunger critical ---
+        if stats.hunger <= CRITICAL_THRESHOLD:
+            food = ConsumableSelector.get_best_food(context.owned_consumables)
+            if food:
                 return self._finalize(
                     ActionDecision(
                         action=ActionType.CONSUMABLES_USE,
-                        reason=f"SURVIVAL: health critically low ({stats.health:.1f}) - auto-buying {potion_to_buy}",
+                        reason=f"SURVIVAL: hunger critically low ({stats.hunger:.1f}) - feeding {food}",
                         should_record_onchain=should_record,
-                        params={"consumable_id": potion_to_buy, "action": "auto_buy_and_use_critical_consumable"},
+                        params={"consumable_id": food, "action": "survival_hunger"},
                         stats_snapshot=stats.to_dict(),
                     ),
                     urgency, [], "survival",
                 )
+            # Same as health: always attempt buy when hunger is critical.
+            food_to_buy = ConsumableSelector.get_best_to_buy_for_hunger()
+            return self._finalize(
+                ActionDecision(
+                    action=ActionType.CONSUMABLES_USE,
+                    reason=f"SURVIVAL: hunger critically low ({stats.hunger:.1f}) - auto-buying {food_to_buy}",
+                    should_record_onchain=should_record,
+                    params={"consumable_id": food_to_buy, "action": "auto_buy_and_use_critical_consumable"},
+                    stats_snapshot=stats.to_dict(),
+                ),
+                urgency, [], "survival",
+            )
+
+        # --- Energy critical (lowest priority — recovers by sleeping) ---
+        if stats.energy <= CRITICAL_THRESHOLD:
+            energizer = ConsumableSelector.get_best_energy_item(context.owned_consumables)
+            if energizer:
+                return self._finalize(
+                    ActionDecision(
+                        action=ActionType.CONSUMABLES_USE,
+                        reason=f"SURVIVAL: energy critically low ({stats.energy:.1f}) - using {energizer}",
+                        should_record_onchain=should_record,
+                        params={"consumable_id": energizer, "action": "survival_energy"},
+                        stats_snapshot=stats.to_dict(),
+                    ),
+                    urgency, [], "survival",
+                )
+            # No energizer → SLEEP (energy recovers passively)
+            return self._finalize(
+                ActionDecision(
+                    action=ActionType.SLEEP,
+                    reason=f"SURVIVAL: energy critically low ({stats.energy:.1f}) - sleeping",
+                    should_record_onchain=should_record,
+                    stats_snapshot=stats.to_dict(),
+                ),
+                urgency, [], "survival",
+            )
 
         # No critical stats
         return None

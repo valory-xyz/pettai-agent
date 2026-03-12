@@ -126,6 +126,7 @@ class PettAgent:
         # Flag to indicate we're waiting for React login
         self.waiting_for_react_login: bool = False
         self._low_health_recovery_in_progress: bool = False
+        self._pending_health_recovery: bool = False
         # Control mid-interval staking KPI logging
         self._mid_interval_logged: bool = True
         self._staking_kpi_log_suppressed: bool = False
@@ -1581,6 +1582,31 @@ class PettAgent:
                                                 await self._execute_decision(decision)
                                             )
 
+                                            # --- Health recovery (highest priority) ---
+                                            # If the action failed due to low health,
+                                            # recover health FIRST, then retry the
+                                            # original action once before falling
+                                            # through to the low-balance fallback.
+                                            if (
+                                                not action_success
+                                                and self._last_action_failed_due_to_low_health()
+                                            ):
+                                                self.logger.info(
+                                                    "🩹 Action %s failed due to low health; "
+                                                    "attempting health recovery first",
+                                                    decision.action.name,
+                                                )
+                                                self._pending_health_recovery = False
+                                                recovered = await self._recover_low_health()
+                                                if recovered:
+                                                    self.logger.info(
+                                                        "🩹 Health recovered; retrying %s",
+                                                        decision.action.name,
+                                                    )
+                                                    action_success = (
+                                                        await self._execute_decision(decision)
+                                                    )
+
                                             # --- Last-resort fallback ---
                                             # If the primary decision (and its own
                                             # internal fallbacks) all failed, force a
@@ -2052,8 +2078,10 @@ class PettAgent:
 
         try:
             if decision.action == ActionType.SLEEP:
+                stay_asleep = decision.params.get("stay_asleep", False)
                 wake_first = decision.params.get("wake_first", False)
-                if wake_first:
+
+                if stay_asleep or wake_first:
                     # Wake first by calling sleep_pet (it toggles sleep state)
                     # Then sleep again to get an on-chain record
                     self.logger.info(
@@ -2536,9 +2564,10 @@ class PettAgent:
                 or "not enough health" in error_str
             ):
                 self.logger.info(
-                    "🩹 Detected 'not enough health' error; attempting recovery"
+                    "🩹 Detected 'not enough health' error; "
+                    "will recover on next action cycle"
                 )
-                await self._recover_low_health()
+                self._pending_health_recovery = True
         except Exception as e:
             self.logger.debug(f"Error handler encountered exception: {e}")
 
@@ -3338,6 +3367,24 @@ class PettAgent:
         except Exception:
             return False
 
+    def _last_action_failed_due_to_low_health(self) -> bool:
+        """Detect low-health errors returned by the server or flagged by the error handler."""
+        if self._pending_health_recovery:
+            return True
+        try:
+            if not self.websocket_client:
+                return False
+            err_text = self.websocket_client.get_last_action_error()
+            if not err_text:
+                return False
+            lowered = err_text.lower()
+            return (
+                "not have enough health" in lowered
+                or "not enough health" in lowered
+            )
+        except Exception:
+            return False
+
     async def _execute_low_balance_fallback_action(
         self, *, record_on_chain: bool
     ) -> bool:
@@ -3358,14 +3405,17 @@ class PettAgent:
         # Build the ordered list of free fallback actions.
         # We always include all of them; the server will reject if stats are
         # too low for a given action and we simply move on to the next one.
+        # RUB first: it has no stat requirements (only needs hygiene < 75).
+        # THROWBALL requires at least one core stat >= 15, so it often fails
+        # on low-stats pets, wasting a round-trip.  SLEEP is always possible.
         fallback_actions: List[Tuple[str, Callable[[], Awaitable[bool]]]] = [
-            (
-                "THROWBALL",
-                lambda: client.throw_ball(record_on_chain=record_on_chain),
-            ),
             (
                 "RUB",
                 lambda: client.rub_pet(record_on_chain=record_on_chain),
+            ),
+            (
+                "THROWBALL",
+                lambda: client.throw_ball(record_on_chain=record_on_chain),
             ),
             (
                 "SLEEP",

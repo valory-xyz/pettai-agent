@@ -310,6 +310,9 @@ class PettAgent:
                     self.websocket_client.set_onchain_success_recorder(
                         self._get_onchain_success_recorder_callback()
                     )
+                    self.websocket_client.set_daily_action_tracker(
+                        self._daily_action_tracker
+                    )
                     try:
                         recorder = self.olas.get_action_recorder()
                         if recorder and recorder.is_enabled:
@@ -491,6 +494,9 @@ class PettAgent:
                     )
                     self.websocket_client.set_onchain_success_recorder(
                         self._get_onchain_success_recorder_callback()
+                    )
+                    self.websocket_client.set_daily_action_tracker(
+                        self._daily_action_tracker
                     )
                     try:
                         recorder2 = self.olas.get_action_recorder()
@@ -732,6 +738,9 @@ class PettAgent:
                 self.websocket_client.set_onchain_success_recorder(
                     self._get_onchain_success_recorder_callback()
                 )
+                self.websocket_client.set_daily_action_tracker(
+                    self._daily_action_tracker
+                )
                 try:
                     recorder = self.olas.get_action_recorder()
                     if recorder and recorder.is_enabled:
@@ -792,6 +801,9 @@ class PettAgent:
                 )
                 self.websocket_client.set_onchain_success_recorder(
                     self._get_onchain_success_recorder_callback()
+                )
+                self.websocket_client.set_daily_action_tracker(
+                    self._daily_action_tracker
                 )
             except Exception:
                 pass
@@ -1513,6 +1525,20 @@ class PettAgent:
                                             f"Pet data updated: {pet_data}"
                                         )
 
+                                        # Keep websocket on-chain recording mode in sync
+                                        # with current epoch progress so implicit action
+                                        # calls (without explicit record_on_chain) remain safe.
+                                        actions_remaining = (
+                                            self._daily_action_tracker.actions_remaining()
+                                        )
+                                        should_record_on_chain = actions_remaining > 0
+                                        try:
+                                            self.websocket_client.set_onchain_recording_enabled(
+                                                should_record_on_chain
+                                            )
+                                        except Exception:
+                                            pass
+
                                         # Decide and perform actions based on current state
                                         pet_context = await self._build_pet_context(
                                             pet_data
@@ -1610,18 +1636,22 @@ class PettAgent:
                                             # --- Last-resort fallback ---
                                             # If the primary decision (and its own
                                             # internal fallbacks) all failed, force a
-                                            # guaranteed free action so we ALWAYS
-                                            # record at least one on-chain tx per
-                                            # cycle.
+                                            # guaranteed free action so the cycle still
+                                            # executes an action even in degraded paths.
                                             if not action_success:
+                                                fallback_record_on_chain = bool(
+                                                    decision.should_record_onchain
+                                                    and self._daily_action_tracker.actions_remaining()
+                                                    > 0
+                                                )
                                                 self.logger.warning(
                                                     "⚠️ Primary decision %s failed; "
-                                                    "running last-resort fallback to "
-                                                    "guarantee an on-chain action",
+                                                    "running last-resort fallback (record_on_chain=%s)",
                                                     decision.action.name,
+                                                    fallback_record_on_chain,
                                                 )
                                                 action_success = await self._execute_low_balance_fallback_action(
-                                                    record_on_chain=decision.should_record_onchain,
+                                                    record_on_chain=fallback_record_on_chain,
                                                 )
 
                                             # Only update scheduler timestamps if action was successful
@@ -2074,7 +2104,19 @@ class PettAgent:
             return False
 
         client = self.websocket_client
-        record_on_chain = decision.should_record_onchain
+        record_on_chain = bool(
+            decision.should_record_onchain
+            and self._daily_action_tracker.actions_remaining() > 0
+        )
+        if decision.should_record_onchain and not record_on_chain:
+            self.logger.info(
+                "⏭️ On-chain requirement already met; executing %s off-chain",
+                decision.action.name,
+            )
+        try:
+            client.set_onchain_recording_enabled(record_on_chain)
+        except Exception:
+            pass
 
         try:
             if decision.action == ActionType.SLEEP:
@@ -3029,13 +3071,20 @@ class PettAgent:
             True if any action succeeded, False if all failed after retries
         """
         normalized_primary = (primary_action_name or "").upper() or "UNKNOWN"
+        fallback_record_on_chain = not skipped_onchain_recording
 
         # Define fallback chain (excluding the primary action)
         fallback_actions = []
 
         # Add fallbacks based on primary action
         if normalized_primary != "RUB":
-            fallback_actions.append(("RUB", client.rub_pet, True))
+            fallback_actions.append(
+                (
+                    "RUB",
+                    lambda: client.rub_pet(record_on_chain=fallback_record_on_chain),
+                    True,
+                )
+            )
         if normalized_primary != "CONSUMABLES_USE":
             # Try to use owned consumables
             async def try_use_consumable() -> bool:
@@ -3048,7 +3097,8 @@ class PettAgent:
                         if info.get("quantity", 0) > 0:
                             try:
                                 result = await self.websocket_client.use_consumable(
-                                    blueprint
+                                    blueprint,
+                                    record_on_chain=fallback_record_on_chain,
                                 )
                                 return bool(result)
                             except Exception:
@@ -3059,10 +3109,24 @@ class PettAgent:
 
             fallback_actions.append(("CONSUMABLES_USE", try_use_consumable, False))
         if normalized_primary != "THROWBALL":
-            fallback_actions.append(("THROWBALL", client.throw_ball, False))
+            fallback_actions.append(
+                (
+                    "THROWBALL",
+                    lambda: client.throw_ball(
+                        record_on_chain=fallback_record_on_chain
+                    ),
+                    False,
+                )
+            )
         # SLEEP is always last in the fallback chain
         if normalized_primary != "SLEEP":
-            fallback_actions.append(("SLEEP", client.sleep_pet, False))
+            fallback_actions.append(
+                (
+                    "SLEEP",
+                    lambda: client.sleep_pet(record_on_chain=fallback_record_on_chain),
+                    False,
+                )
+            )
 
         # Try primary action and fallbacks with retries
         for attempt in range(max_retries):

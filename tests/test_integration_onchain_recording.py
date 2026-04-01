@@ -312,7 +312,7 @@ class TestDecisionEngineIntegration:
         return PetDecisionMaker()
 
     @pytest.mark.asyncio
-    async def test_first_8_actions_record_onchain(
+    async def test_first_required_actions_record_onchain(
         self, decision_maker, executor, client
     ):
         f"First {REQUIRED_ACTIONS_PER_EPOCH} actions should trigger on-chain recording."
@@ -331,27 +331,41 @@ class TestDecisionEngineIntegration:
             decision = decision_maker.decide(context)
             assert (
                 decision.should_record_onchain == True
-            ), f"Action {action_num+1}/8: should_record_onchain should be True"
+            ), (
+                f"Action {action_num+1}/{REQUIRED_ACTIONS_PER_EPOCH}: "
+                "should_record_onchain should be True"
+            )
 
             # Execute the decision
             success = await execute_decision(decision, executor)
-            assert success == True, f"Action {action_num+1}/8: execution should succeed"
+            assert success == True, (
+                f"Action {action_num+1}/{REQUIRED_ACTIONS_PER_EPOCH}: "
+                "execution should succeed"
+            )
 
             # Verify on-chain recording was triggered
             record_calls = client.get_record_action_calls()
             assert (
                 len(record_calls) == 1
-            ), f"Action {action_num+1}/8: Expected 1 recordAction call, got {len(record_calls)}"
+            ), (
+                f"Action {action_num+1}/{REQUIRED_ACTIONS_PER_EPOCH}: "
+                f"Expected 1 recordAction call, got {len(record_calls)}"
+            )
             assert (
                 record_calls[0]["recorded"] == True
-            ), f"Action {action_num+1}/8: recordAction should have been called"
+            ), (
+                f"Action {action_num+1}/{REQUIRED_ACTIONS_PER_EPOCH}: "
+                "recordAction should have been called"
+            )
 
     @pytest.mark.asyncio
-    async def test_actions_after_8_do_not_record_onchain(
+    async def test_actions_after_required_do_not_record_onchain(
         self, decision_maker, executor, client
     ):
-        """Actions after the 8th should NOT trigger on-chain recording."""
-        for action_num in range(8, 12):
+        """Actions at/after threshold should NOT trigger on-chain recording."""
+        for action_num in range(
+            REQUIRED_ACTIONS_PER_EPOCH, REQUIRED_ACTIONS_PER_EPOCH + 4
+        ):
             client.clear_calls()
             context = create_context(
                 hunger=80,
@@ -377,6 +391,75 @@ class TestDecisionEngineIntegration:
             assert (
                 len(record_calls) == 0
             ), f"Action {action_num+1}: Expected 0 recordAction calls, got {len(record_calls)}"
+
+    @pytest.mark.asyncio
+    async def test_threshold_flip_is_exact(
+        self, decision_maker, executor, client
+    ):
+        """Recording must flip from True->False exactly at REQUIRED_ACTIONS_PER_EPOCH."""
+        for actions_recorded, expected in [
+            (REQUIRED_ACTIONS_PER_EPOCH - 1, True),
+            (REQUIRED_ACTIONS_PER_EPOCH, False),
+            (REQUIRED_ACTIONS_PER_EPOCH + 1, False),
+            (REQUIRED_ACTIONS_PER_EPOCH + 5, False),
+        ]:
+            client.clear_calls()
+            context = create_context(
+                hunger=80,
+                health=80,
+                energy=80,
+                happiness=80,
+                hygiene=30,
+                actions_recorded=actions_recorded,
+                required_actions=REQUIRED_ACTIONS_PER_EPOCH,
+            )
+
+            decision = decision_maker.decide(context)
+            assert (
+                decision.should_record_onchain is expected
+            ), (
+                "Unexpected should_record_onchain for "
+                f"actions_recorded={actions_recorded}, "
+                f"required={REQUIRED_ACTIONS_PER_EPOCH}"
+            )
+
+            success = await execute_decision(decision, executor)
+            assert success is True
+
+            record_calls = client.get_record_action_calls()
+            if expected:
+                assert len(record_calls) == 1
+            else:
+                assert len(record_calls) == 0
+
+    @pytest.mark.asyncio
+    async def test_regression_14_of_9_never_records_onchain(
+        self, decision_maker, executor, client
+    ):
+        """Regression: when counter is 14/9, the action must execute OFF-chain."""
+        client.clear_calls()
+        context = create_context(
+            hunger=80,
+            health=80,
+            energy=80,
+            happiness=80,
+            hygiene=30,
+            actions_recorded=14,
+            required_actions=REQUIRED_ACTIONS_PER_EPOCH,
+        )
+
+        decision = decision_maker.decide(context)
+        assert (
+            decision.should_record_onchain is False
+        ), "When actions_recorded=14 and required=9, should_record_onchain must be False"
+
+        success = await execute_decision(decision, executor)
+        assert success is True, "Action should still execute successfully off-chain"
+
+        record_calls = client.get_record_action_calls()
+        assert (
+            len(record_calls) == 0
+        ), "No recordAction call should be made when threshold is already exceeded"
 
     @pytest.mark.asyncio
     async def test_all_permutations_respect_onchain_flag(
@@ -489,14 +572,14 @@ class TestDecisionEngineIntegration:
                 )
 
     @pytest.mark.asyncio
-    async def test_8_action_sequence_all_recorded(
+    async def test_required_action_sequence_all_recorded(
         self, decision_maker, executor, client
     ):
         f"Run {REQUIRED_ACTIONS_PER_EPOCH} actions in sequence - all should be recorded on-chain."
         client.clear_calls()
         all_recorded = []
 
-        for action_num in range(8):
+        for action_num in range(REQUIRED_ACTIONS_PER_EPOCH):
             context = create_context(
                 hunger=80,
                 health=80,
@@ -510,7 +593,10 @@ class TestDecisionEngineIntegration:
             decision = decision_maker.decide(context)
             assert (
                 decision.should_record_onchain == True
-            ), f"Action {action_num+1}/8: should_record_onchain should be True"
+            ), (
+                f"Action {action_num+1}/{REQUIRED_ACTIONS_PER_EPOCH}: "
+                "should_record_onchain should be True"
+            )
 
             success = await execute_decision(decision, executor)
             assert success == True
@@ -527,7 +613,52 @@ class TestDecisionEngineIntegration:
         for i, call_data in enumerate(record_calls):
             assert (
                 call_data["recorded"] == True
-            ), f"Record call {i+1}/8: should have recorded=True"
+            ), (
+                f"Record call {i+1}/{REQUIRED_ACTIONS_PER_EPOCH}: "
+                "should have recorded=True"
+            )
+
+    @pytest.mark.asyncio
+    async def test_long_sequence_caps_onchain_calls_at_required(
+        self, decision_maker, executor, client
+    ):
+        """Over long runs, total on-chain recordings must never exceed REQUIRED_ACTIONS_PER_EPOCH."""
+        client.clear_calls()
+        actions_recorded = 0
+        should_record_history: List[bool] = []
+        total_steps = REQUIRED_ACTIONS_PER_EPOCH + 25
+
+        for _ in range(total_steps):
+            context = create_context(
+                hunger=80,
+                health=80,
+                energy=80,
+                happiness=80,
+                hygiene=30,
+                actions_recorded=actions_recorded,
+                required_actions=REQUIRED_ACTIONS_PER_EPOCH,
+            )
+            decision = decision_maker.decide(context)
+            should_record_history.append(bool(decision.should_record_onchain))
+            success = await execute_decision(decision, executor)
+            assert success is True
+
+            if decision.should_record_onchain:
+                actions_recorded += 1
+
+        record_calls = client.get_record_action_calls()
+        assert (
+            len(record_calls) == REQUIRED_ACTIONS_PER_EPOCH
+        ), (
+            f"Expected hard cap at {REQUIRED_ACTIONS_PER_EPOCH} recordAction calls, "
+            f"got {len(record_calls)} after {total_steps} actions"
+        )
+
+        # First REQUIRED_ACTIONS_PER_EPOCH decisions should record, none after.
+        assert all(should_record_history[:REQUIRED_ACTIONS_PER_EPOCH]) is True
+        assert (
+            any(should_record_history[REQUIRED_ACTIONS_PER_EPOCH:]) is False
+        ), "No decisions after threshold should request on-chain recording"
 
 
 # ==============================================================================
@@ -655,17 +786,22 @@ class TestFullFlowIntegration:
         return should_record
 
     @pytest.mark.asyncio
-    async def test_full_flow_first_8_actions(self, decision_maker, executor, client):
+    async def test_full_flow_first_required_actions(
+        self, decision_maker, executor, client
+    ):
         f"Full flow: first {REQUIRED_ACTIONS_PER_EPOCH} actions should all be recorded."
         client.clear_calls()
         recorded_count = 0
 
-        for action_num in range(8):
+        for action_num in range(REQUIRED_ACTIONS_PER_EPOCH):
             # Simulate how pett_agent sets the flag
             should_record = self.simulate_set_onchain_recording(client, action_num)
             assert (
                 should_record == True
-            ), f"Action {action_num+1}/8: should_record should be True"
+            ), (
+                f"Action {action_num+1}/{REQUIRED_ACTIONS_PER_EPOCH}: "
+                "should_record should be True"
+            )
 
             # Create context and decide
             context = create_context(
@@ -699,11 +835,15 @@ class TestFullFlowIntegration:
         ), f"Expected {REQUIRED_ACTIONS_PER_EPOCH} total recorded actions, got {recorded_count}"
 
     @pytest.mark.asyncio
-    async def test_full_flow_actions_after_8(self, decision_maker, executor, client):
+    async def test_full_flow_actions_after_required(
+        self, decision_maker, executor, client
+    ):
         f"Full flow: actions after {REQUIRED_ACTIONS_PER_EPOCH} should NOT be recorded."
         client.clear_calls()
 
-        for action_num in range(8, 12):
+        for action_num in range(
+            REQUIRED_ACTIONS_PER_EPOCH, REQUIRED_ACTIONS_PER_EPOCH + 4
+        ):
             # Simulate how pett_agent sets the flag
             should_record = self.simulate_set_onchain_recording(client, action_num)
             assert (
@@ -783,7 +923,52 @@ class TestFullFlowIntegration:
         record_calls = client.get_record_action_calls()
         assert (
             len(record_calls) == REQUIRED_ACTIONS_PER_EPOCH
-        ), f"Action 9 should not be recorded, but got {len(record_calls)} total"
+        ), (
+            f"Action after {REQUIRED_ACTIONS_PER_EPOCH} should not be recorded, "
+            f"but got {len(record_calls)} total"
+        )
+
+    @pytest.mark.asyncio
+    async def test_full_flow_never_exceeds_required_over_many_cycles(
+        self, decision_maker, executor, client
+    ):
+        """End-to-end simulation: after required txs are reached, no new txs are recorded."""
+        client.clear_calls()
+        total_cycles = REQUIRED_ACTIONS_PER_EPOCH + 30
+        local_recorded = 0
+
+        for _ in range(total_cycles):
+            should_record = self.simulate_set_onchain_recording(
+                client, local_recorded
+            )
+            context = create_context(
+                hunger=80,
+                health=80,
+                energy=80,
+                happiness=80,
+                hygiene=30,
+                actions_recorded=local_recorded,
+                required_actions=REQUIRED_ACTIONS_PER_EPOCH,
+            )
+
+            decision = decision_maker.decide(context)
+            assert (
+                decision.should_record_onchain == should_record
+            ), "Decision flag must match pett_agent onchain enable/disable logic"
+
+            success = await execute_decision(decision, executor)
+            assert success is True
+
+            if decision.should_record_onchain:
+                local_recorded += 1
+
+        record_calls = client.get_record_action_calls()
+        assert (
+            len(record_calls) == REQUIRED_ACTIONS_PER_EPOCH
+        ), (
+            f"Expected {REQUIRED_ACTIONS_PER_EPOCH} total records max, "
+            f"got {len(record_calls)} after {total_cycles} cycles"
+        )
 
 
 if __name__ == "__main__":

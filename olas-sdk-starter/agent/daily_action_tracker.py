@@ -31,6 +31,7 @@ class DailyActionTracker:
             "actions": [],
             "display_actions": [],
         }
+        self._in_flight: int = 0
         self._load_state()
 
     def _current_epoch(self) -> str:
@@ -74,6 +75,7 @@ class DailyActionTracker:
         )
 
         self._state = {"epoch": current_epoch, "actions": [], "display_actions": []}
+        self._in_flight = 0
         self._save_state()
 
         logger.info(
@@ -167,9 +169,54 @@ class DailyActionTracker:
         return len(self._state.get("actions", []))
 
     def actions_remaining(self) -> int:
-        """Return how many actions are needed to reach the daily requirement."""
+        """Return how many actions are needed to reach the daily requirement.
+
+        Accounts for both completed actions and in-flight (pending) transactions
+        to prevent over-counting when background tx tasks haven't finished yet.
+        """
         completed = self.actions_completed()
-        return max(self.required_actions - completed, 0)
+        return max(self.required_actions - completed - self._in_flight, 0)
+
+    def reserve_slot(self) -> bool:
+        """Atomically reserve an on-chain tx slot before submitting.
+
+        Returns True if a slot was reserved, False if all slots are taken
+        (completed + in-flight >= required_actions).
+        """
+        self._ensure_current_epoch()
+        used = len(self._state.get("actions", [])) + self._in_flight
+        if used >= self.required_actions:
+            return False
+        self._in_flight += 1
+        logger.info(
+            "🔒 Reserved on-chain slot: in_flight=%d, completed=%d, remaining=%d",
+            self._in_flight,
+            len(self._state.get("actions", [])),
+            self.actions_remaining(),
+        )
+        return True
+
+    def release_slot(self, success: bool, action_name: str = "") -> None:
+        """Release a previously reserved on-chain tx slot.
+
+        Args:
+            success: If True, the tx succeeded and the action is recorded.
+            action_name: Action name to record on success.
+        """
+        self._in_flight = max(0, self._in_flight - 1)
+        if success and action_name:
+            self.record_action(action_name)
+            logger.info(
+                "🔓 Released slot (success): in_flight=%d, completed=%d",
+                self._in_flight,
+                len(self._state.get("actions", [])),
+            )
+        else:
+            logger.info(
+                "🔓 Released slot (failed): in_flight=%d, completed=%d",
+                self._in_flight,
+                len(self._state.get("actions", [])),
+            )
 
     def has_met_required_actions(self) -> bool:
         """Return True once the minimum required actions have been satisfied."""
@@ -191,6 +238,7 @@ class DailyActionTracker:
             prev_count,
         )
         self._state = {"epoch": new_epoch, "actions": [], "display_actions": []}
+        self._in_flight = 0
         self._save_state()
 
     def record_display_action(
@@ -230,5 +278,6 @@ class DailyActionTracker:
             "required_actions": self.required_actions,
             "completed": self.actions_completed(),
             "remaining": self.actions_remaining(),
+            "in_flight": self._in_flight,
             "actions": list(self._state.get("display_actions", [])),
         }

@@ -147,6 +147,8 @@ class PettWebSocketClient:
         self._epoch_change_checker: Optional[Callable[[], Awaitable[bool]]] = None
         # Callback to record successful on-chain action (for staking counter)
         self._onchain_success_recorder: Optional[Callable[[str], None]] = None
+        # Reference to DailyActionTracker for reserve/release slot pattern
+        self._daily_action_tracker: Optional[Any] = None
 
     def set_telemetry_recorder(
         self, recorder: Optional[Callable[[Dict[str, Any], bool, Optional[str]], None]]
@@ -253,6 +255,10 @@ class PettWebSocketClient:
         """
         self._onchain_success_recorder = recorder
 
+    def set_daily_action_tracker(self, tracker: Any) -> None:
+        """Attach the DailyActionTracker for reserve/release slot pattern."""
+        self._daily_action_tracker = tracker
+
     def _schedule_verified_record_action(
         self, action_type: str, verification: Dict[str, Any]
     ) -> None:
@@ -299,23 +305,62 @@ class PettWebSocketClient:
         if not normalized_type:
             return
 
+        # Reserve a slot before spawning the background task
+        slot_reserved = False
+        if self._daily_action_tracker:
+            if not self._daily_action_tracker.reserve_slot():
+                logger.info(
+                    "No action slots available (in-flight + completed >= %d); "
+                    "skipping on-chain recording for %s",
+                    REQUIRED_ACTIONS_PER_EPOCH,
+                    action_type,
+                )
+                return
+            slot_reserved = True
+
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
+            if slot_reserved:
+                self._daily_action_tracker.release_slot(success=False)
             return
 
+        tracker = self._daily_action_tracker
+        success_recorder = self._onchain_success_recorder
+
         task = loop.create_task(
-            self._action_recorder.record_action_verified(normalized_type, verification)
+            self._action_recorder.record_action_verified(
+                normalized_type, verification
+            )
         )
 
         def _handle_result(fut: asyncio.Future) -> None:
             if fut.cancelled():
+                if slot_reserved and tracker:
+                    tracker.release_slot(success=False)
                 return
             exc = fut.exception()
             if exc:
                 logger.debug(
-                    "Verified action recorder task raised for %s: %s", action_type, exc
+                    "Verified action recorder task raised for %s: %s",
+                    action_type,
+                    exc,
                 )
+                if slot_reserved and tracker:
+                    tracker.release_slot(success=False)
+                return
+            result = fut.result()
+            if result and slot_reserved and tracker:
+                tracker.release_slot(
+                    success=True, action_name=normalized_type
+                )
+            elif result and success_recorder:
+                try:
+                    success_recorder(normalized_type)
+                except Exception:
+                    pass
+            elif not result and slot_reserved and tracker:
+                tracker.release_slot(success=False)
 
         task.add_done_callback(_handle_result)
 
@@ -374,36 +419,62 @@ class PettWebSocketClient:
         if not normalized_type:
             return
 
+        # Reserve a slot to prevent concurrent over-submission
+        slot_reserved = False
+        if self._daily_action_tracker:
+            if not self._daily_action_tracker.reserve_slot():
+                logger.info(
+                    "No action slots available (in-flight + completed >= %d); "
+                    "skipping on-chain recording for %s",
+                    REQUIRED_ACTIONS_PER_EPOCH,
+                    action_type,
+                )
+                return
+            slot_reserved = True
+
         try:
             success = await self._action_recorder.record_action_verified(
                 normalized_type, verification
             )
             if success:
                 logger.info(
-                    "✅ On-chain recording succeeded for %s; incrementing staking counter",
+                    "✅ On-chain recording succeeded for %s; "
+                    "incrementing staking counter",
                     normalized_type,
                 )
-                # Call the success recorder to increment the counter
-                if self._onchain_success_recorder:
+                if slot_reserved:
+                    self._daily_action_tracker.release_slot(
+                        success=True, action_name=normalized_type
+                    )
+                    slot_reserved = False
+                elif self._onchain_success_recorder:
                     try:
                         self._onchain_success_recorder(normalized_type)
                     except Exception as rec_exc:
                         logger.debug(
-                            "Failed to call onchain success recorder for %s: %s",
+                            "Failed to call onchain success recorder "
+                            "for %s: %s",
                             normalized_type,
                             rec_exc,
                         )
             else:
                 logger.info(
-                    "⚠️ On-chain recording failed for %s; counter NOT incremented",
+                    "⚠️ On-chain recording failed for %s; "
+                    "counter NOT incremented",
                     normalized_type,
                 )
+                if slot_reserved:
+                    self._daily_action_tracker.release_slot(success=False)
+                    slot_reserved = False
         except Exception as exc:
             logger.debug(
                 "Failed to record action for %s: %s",
                 action_type,
                 exc,
             )
+        finally:
+            if slot_reserved and self._daily_action_tracker:
+                self._daily_action_tracker.release_slot(success=False)
 
     def _generate_nonce(self) -> str:
         """Generate a simple random numeric nonce as a string."""

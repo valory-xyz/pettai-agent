@@ -555,10 +555,9 @@ class PetDecisionMaker:
 
     def decide(self, context: PetContext) -> ActionDecision:
         stats = context.stats
-        # Always record on-chain every 7-minute tick — not just until the
-        # epoch minimum is reached.  This guarantees continuous on-chain
-        # activity regardless of pet stats or epoch progress.
-        should_record = True
+        # Record on-chain only until the epoch requirement is met.
+        # After that, keep acting off-chain to avoid unnecessary txs.
+        should_record = context.needs_more_onchain_actions
 
         self._log_context(context)
         urgency = compute_urgency_scores(stats)

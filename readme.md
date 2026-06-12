@@ -242,4 +242,4 @@ For issues related to:
 
 ## License
 
-See the LICENSE file in the `olas-sdk-starter` directory for details.
+This project is licensed under the Apache License 2.0 — see the [LICENSE](LICENSE) file for details. The vendored `olas-sdk-starter` directory retains its own Apache 2.0 LICENSE file.

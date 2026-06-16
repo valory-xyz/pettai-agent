@@ -13,7 +13,7 @@ import ssl
 import socket
 import sys
 import base64
-import subprocess
+import subprocess  # nosec B404 - used to invoke the trusted, hardcoded `openssl` CLI
 from pathlib import Path
 
 
@@ -36,7 +36,7 @@ def fetch_cert_chain_openssl(hostname: str, port: int = 443) -> str:
             hostname,
         ]
 
-        result = subprocess.run(
+        result = subprocess.run(  # nosec B603 - `cmd` is a fixed argument list, no shell, no untrusted input
             cmd,
             input=b"",  # Send empty input to close connection
             capture_output=True,

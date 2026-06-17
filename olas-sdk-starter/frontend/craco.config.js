@@ -52,6 +52,21 @@ module.exports = {
   webpack: {
     configure: (config) => {
       addSourceMapExclusions(config);
+
+      // Some transitive deps (web3/crypto libs pulled in via @privy-io) use
+      // dynamic `require()`, which makes webpack emit
+      // "Critical dependency: the request of a dependency is an expression".
+      // It is benign, but CI sets CI=true so react-scripts treats warnings as
+      // errors and the build fails. Ignore only this specific warning.
+      config.ignoreWarnings = [
+        ...(config.ignoreWarnings || []),
+        (warning) =>
+          typeof warning?.message === 'string' &&
+          /Critical dependency: the request of a dependency is an expression/.test(
+            warning.message,
+          ),
+      ];
+
       return config;
     },
   },
